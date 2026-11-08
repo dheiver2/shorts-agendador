@@ -221,7 +221,13 @@ def ordem_de_envio(plano, prioridade, tz):
 
 def fila(pasta):
     vids = [p for p in pasta.iterdir() if p.is_file() and p.suffix.lower() in EXTS and not p.name.startswith(".")]
-    return sorted(vids, key=lambda p: p.name.lower())
+    return sorted(vids, key=ordem_natural)
+
+
+def ordem_natural(p):
+    """'27 - x' antes de '031 - y': compara a numeração inicial como número, não como texto."""
+    m = re.match(r"\d+", p.name)
+    return (0, int(m.group()), p.name.lower()) if m else (1, 0, p.name.lower())
 
 
 def sha256(path):
@@ -271,6 +277,7 @@ def metadados(video, cfg):
         titulo = re.sub(r"^\d+[\s._-]*", "", video.stem)  # tira numeração de ordem "001-"
         titulo = titulo.replace("_", " ").replace("-", " ").strip() or video.stem
         desc = cfg["descricao_padrao"]
+    titulo = titulo.replace("<", "").replace(">", "").strip() or video.stem
     if "#shorts" not in titulo.lower() and len(titulo) + 8 <= 100:
         titulo += " #Shorts"
     if "#shorts" not in desc.lower():
@@ -314,6 +321,18 @@ def credenciais(interativo=False):
 def youtube():
     from googleapiclient.discovery import build
     return build("youtube", "v3", credentials=credenciais(), cache_discovery=False)
+
+
+def conectar():
+    """youtube() para a rodada automática: devolve (cliente, erro) em vez de derrubar o processo.
+    O login vencido sai como SystemExit (sem token) ou RefreshError (token revogado ou expirado)."""
+    try:
+        return youtube(), None
+    except (Exception, SystemExit) as e:
+        texto = str(e)
+        if "invalid_grant" in texto or "Sem login" in texto or "expired" in texto.lower():
+            return None, "O login do YouTube expirou. Rode no Mac: .venv/bin/python agente.py auth"
+        return None, f"Sem acesso ao YouTube: {texto[:200]}"
 
 
 def subir(yt, video, titulo, desc, publish_at, cfg):
@@ -438,7 +457,7 @@ def cmd_run(cfg, simular=False):
     reposicao = horarios_reposicao(cfg, estado, agora)
     vagos = sorted([(s, False) for s in regulares] + [(s, True) for s in reposicao])
 
-    agendados, pulados, erro_envio = [], [], None
+    agendados, pulados, revisar, outros, erro_envio = [], [], [], [], None
     cota_ate = estado.get("cota_esgotada_ate")
     cota_bloqueada = bool(cota_ate) and agora < de_iso(cota_ate)
     if cota_bloqueada:
@@ -446,9 +465,12 @@ def cmd_run(cfg, simular=False):
             f"sem envios nesta rodada.")
         vagos = []
     videos = fila(pasta)
-    yt = None
-    if vagos and videos:
-        yt = None if simular else youtube()
+    yt, erro_conexao = None, None
+    if vagos and videos and not simular:
+        yt, erro_conexao = conectar()
+        if erro_conexao:
+            log(erro_conexao)
+            vagos = []
     usar_brier = cfg["brier"]["ativo"] and bool(carregar_env().get("BRIER_KEY"))
     prioridade = list(dict.fromkeys(cfg["horarios"] + cfg["horarios_reserva"]))
     cache = estado.setdefault("brier_cache", {})
@@ -491,7 +513,7 @@ def cmd_run(cfg, simular=False):
                         erro, destino = motivo + " — revise o título/descrição e devolva à pasta", pasta / "revisar"
             if erro:
                 log(f"PULADO {cand.name}: {erro}")
-                pulados.append(f"{cand.name}: {erro}")
+                (revisar if destino.name == "revisar" else pulados).append(f"{cand.name}: {erro}")
                 if not simular:
                     destino.mkdir(exist_ok=True)
                     shutil.move(str(cand), destino / cand.name)
@@ -564,7 +586,7 @@ def cmd_run(cfg, simular=False):
         log(f"AGENDADO {video.name} → {quando}{nota} | https://youtube.com/shorts/{vid}")
 
     if brier_falhou:
-        pulados.append("Brier indisponível nesta rodada: vídeos seguiram sem ranking nem hashtags")
+        outros.append("Brier indisponível nesta rodada: vídeos seguiram sem ranking nem hashtags")
     sem_video = len(vagos) - len(agendados) if not erro_envio and not cota_bloqueada and not simular else 0
     if vagos and not fila(pasta) and sem_video:
         log(f"Fila vazia: {sem_video} horário(s) ficaram sem vídeo.")
@@ -572,19 +594,23 @@ def cmd_run(cfg, simular=False):
     problemas = []
     if not simular:
         try:
-            yt = yt or youtube()
+            if yt is None and not erro_conexao:
+                yt, erro_conexao = conectar()
+            if erro_conexao:
+                raise RuntimeError(erro_conexao)
             problemas = conferir(yt, cfg, estado, agora)
             salvar_estado(estado)
             for p in problemas:
                 log(f"PROBLEMA {p}")
         except Exception as e:
-            problemas = [f"Não consegui conferir os agendamentos: {str(e)[:200]}"]
-            log(problemas[0])
+            if not erro_conexao:
+                problemas = [f"Não consegui conferir os agendamentos: {str(e)[:200]}"]
+                log(problemas[0])
 
     if not simular and usar_brier and not brier_falhou:
         estado = carregar(ESTADO, estado)  # cmd_avaliar grava o cache por conta própria
         for a in cmd_avaliar(cfg, limite=cfg["brier"].get("avaliar_por_rodada", 6)):
-            pulados.append("Vai precisar de revisão quando chegar a vez: " + a)
+            outros.append("Vai precisar de revisão quando chegar a vez: " + a)
         estado = carregar(ESTADO, estado)
 
     if not simular:
@@ -598,12 +624,23 @@ def cmd_run(cfg, simular=False):
     fila_baixa = dias < cfg["avisar_fila_abaixo_dias"] and estado.get("aviso_fila_em") != hoje
     if simular:
         return
-    if agendados or pulados or erro_envio or problemas or fila_baixa or sem_video:
+    login_ja_avisado = erro_conexao and estado.get("aviso_login_em") == hoje
+    if erro_conexao and not login_ja_avisado:
+        estado["aviso_login_em"] = hoje
+        salvar_estado(estado)
+    if agendados or pulados or revisar or outros or erro_envio or problemas or fila_baixa or sem_video \
+            or (erro_conexao and not login_ja_avisado):
         partes = ["🎬 Agendador de Shorts"]
         if agendados:
             partes.append("Agendados:\n" + "\n".join(f"• {x}" for x in agendados))
         if pulados:
             partes.append("Recusados (foram para rejeitados/):\n" + "\n".join(f"• {x}" for x in pulados))
+        if revisar:
+            partes.append("Segurados pelo Brier (foram para revisar/):\n" + "\n".join(f"• {x}" for x in revisar))
+        if outros:
+            partes.append("\n".join(f"• {x}" for x in outros))
+        if erro_conexao and not login_ja_avisado:
+            partes.append("🔑 " + erro_conexao)
         if erro_envio:
             partes.append("⚠️ " + erro_envio)
         if problemas:
@@ -721,7 +758,7 @@ def main():
         with LOCK.open("w") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)  # espera a rodada em andamento, senão ela regrava o estado antigo
             estado = carregar(ESTADO, {"agendados": []})
-            destino = atualizar_painel(cfg, estado, None if "--sem-rede" in args else youtube())
+            destino = atualizar_painel(cfg, estado, None if "--sem-rede" in args else youtube())  # manual: erro aparece na tela
         print(f"Painel: {destino}")
         if "--nao-abrir" not in args:
             subprocess.run(["open", str(destino)])

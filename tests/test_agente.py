@@ -231,3 +231,31 @@ def test_coletar_metricas_soma_e_junta_pontos_proximos():
     agente.coletar_metricas(YT(), estado, agora + timedelta(minutes=5))
     assert estado["serie"][-1]["views"] == 10 and len(estado["serie"]) == 1
     assert "metricas" not in estado["agendados"][2]
+
+
+def test_fila_ordem_natural(tmp_path):
+    for n in ["100 - c.mp4", "27 - a.mp4", "031 - b.mp4", "sem numero.mp4", "5 - z.mp4"]:
+        (tmp_path / n).write_bytes(b"")
+    assert [p.name for p in agente.fila(tmp_path)] == \
+        ["5 - z.mp4", "27 - a.mp4", "031 - b.mp4", "100 - c.mp4", "sem numero.mp4"]
+
+
+def test_titulo_sem_sinais_que_o_youtube_recusa(tmp_path):
+    v = tmp_path / "01 - a.mp4"
+    v.write_bytes(b"")
+    v.with_suffix(".txt").write_text("Antes <e> depois\ndesc")
+    titulo, _, _ = agente.metadados(v, {"descricao_padrao": ""})
+    assert "<" not in titulo and ">" not in titulo
+
+
+@pytest.mark.parametrize("erro,esperado", [
+    (SystemExit("Sem login válido. Rode: ./agente.py auth"), "expirou"),
+    (Exception("invalid_grant: Token has been expired or revoked."), "expirou"),
+    (Exception("rede fora"), "Sem acesso"),
+])
+def test_conectar_nao_derruba_a_rodada(monkeypatch, erro, esperado):
+    def falha():
+        raise erro
+    monkeypatch.setattr(agente, "youtube", falha)
+    yt, msg = agente.conectar()
+    assert yt is None and esperado in msg

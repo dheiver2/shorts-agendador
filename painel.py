@@ -244,11 +244,13 @@ def publicar(cfg, estado, fila_n, fila_dias, agora_utc, pasta_git, repo):
     if not (pasta_git / ".git").exists():
         git("init", "-q")
         git("remote", "add", "origin", f"https://github.com/{repo}.git")
-    git("checkout", "-q", "--orphan", "publicar")
+    # HEAD aponta para um ramo novo e vazio: o próximo commit nasce sem pai (sem histórico),
+    # mesmo que uma publicação anterior tenha parado no meio
+    subprocess.run(["git", "-C", str(pasta_git), "branch", "-D", "publicar"], capture_output=True)
+    git("symbolic-ref", "HEAD", "refs/heads/publicar")
     git("add", "-A")
     git("-c", "user.name=shorts-agendador", "-c", "user.email=shorts-agendador@users.noreply.github.com",
         "commit", "-q", "-m", "Painel atualizado")
-    subprocess.run(["git", "-C", str(pasta_git), "branch", "-D", "main"], capture_output=True)
-    git("branch", "-m", "main")
+    git("branch", "-M", "main")
     git("push", "-q", "-f", "origin", "main")
     return f"https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/"
