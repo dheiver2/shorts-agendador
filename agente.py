@@ -10,6 +10,7 @@ Uso:
   agente.py run             # agenda os próximos horários vagos, confere e avisa
   agente.py run --simular   # mostra o que faria, sem subir nada
   agente.py status          # fila e próximos agendamentos
+  agente.py avaliar         # passa a fila inteira pelo Brier e mostra o ranking
   agente.py teste-aviso     # manda uma mensagem de teste no Telegram
 """
 import fcntl
@@ -20,11 +21,14 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+import brier
 
 BASE = Path(__file__).resolve().parent
 CONFIG = BASE / "config.json"
@@ -375,9 +379,15 @@ def cmd_run(cfg, simular=False):
     yt = None
     if vagos and videos:
         yt = None if simular else youtube()
-    for slot, eh_repo in vagos:
-        video = None
-        while videos and video is None:
+    usar_brier = cfg["brier"]["ativo"] and bool(carregar_env().get("BRIER_KEY"))
+    prioridade = list(dict.fromkeys(cfg["horarios"] + cfg["horarios_reserva"]))
+    cache = estado.setdefault("brier_cache", {})
+    brier_falhou = False
+
+    def proximo_valido():
+        """Próximo vídeo da fila que passa no formato, no anti-duplicado e no Brier."""
+        nonlocal brier_falhou
+        while videos:
             cand = videos.pop(0)
             info, erro = sondar(cand)
             erro = erro or validar(info, cfg)
@@ -386,20 +396,69 @@ def cmd_run(cfg, simular=False):
                 h = sha256(cand)
                 if h in hashes:
                     erro = "duplicado (o mesmo arquivo já foi enviado)"
+            destino = rejeitados
+            titulo, desc, side = metadados(cand, cfg) if not erro else (None, None, None)
+            av = None
+            if not erro and usar_brier and not brier_falhou:
+                k = brier.chave_cache(h, titulo, desc)
+                av = cache.get(k)
+                if av is None:
+                    try:
+                        t0 = time.time()
+                        resp = brier.consultar(cfg["brier"], carregar_env()["BRIER_KEY"],
+                                               brier.estado_texto(titulo, desc, cfg["canal"]))
+                        av = brier.interpretar(resp, cfg["brier"])
+                        cache[k] = av
+                        log(f"BRIER {cand.name}: gancho {av['gancho']:.2f}, enganoso {av['enganoso']:.0%}, "
+                            f"risco {av['risco']:.0%}, público {av['publico']}, #{' #'.join(av['hashtags'])} "
+                            f"({time.time() - t0:.1f}s)")
+                    except Exception as e:
+                        brier_falhou = True  # segue sem Brier nesta rodada
+                        log(f"Brier indisponível, seguindo sem ele: {e}")
+                if av:
+                    motivo = brier.segurar(av, cfg["brier"])
+                    if motivo:
+                        erro, destino = motivo + " — revise o título/descrição e devolva à pasta", pasta / "revisar"
             if erro:
                 log(f"PULADO {cand.name}: {erro}")
                 pulados.append(f"{cand.name}: {erro}")
                 if not simular:
-                    rejeitados.mkdir(exist_ok=True)
-                    shutil.move(str(cand), rejeitados / cand.name)
+                    destino.mkdir(exist_ok=True)
+                    shutil.move(str(cand), destino / cand.name)
+                    side_txt = cand.with_suffix(".txt")
+                    if destino.name == "revisar" and side_txt.exists():
+                        shutil.move(str(side_txt), destino / side_txt.name)
                 continue
-            video = cand
-        if video is None:
-            break
-        titulo, desc, side = metadados(video, cfg)
+            if av and av["hashtags"]:
+                desc = brier.descricao_com_hashtags(desc, av["hashtags"])
+            return {"video": cand, "sha": h, "titulo": titulo, "desc": desc, "side": side, "brier": av}
+        return None
+
+    # agrupa os horários vagos por dia; o vídeo de gancho mais forte do dia pega o melhor horário
+    por_dia = {}
+    for slot, eh_repo in vagos:
+        por_dia.setdefault(slot.astimezone(tz).date(), []).append((slot, eh_repo))
+    plano = []
+    for dia in sorted(por_dia):
+        slots = por_dia[dia]
+        lote = [v for v in (proximo_valido() for _ in slots) if v]
+        ranks = [(prioridade.index(s.astimezone(tz).strftime("%H:%M"))
+                  if s.astimezone(tz).strftime("%H:%M") in prioridade else 99, (s, r)) for s, r in slots]
+        if any(v["brier"] for v in lote):
+            pares = brier.distribuir([(v, (v["brier"] or {}).get("gancho", 0.5)) for v in lote], ranks)
+        else:  # sem Brier: ordem da fila nos horários em ordem cronológica
+            pares = list(zip(sorted(slots), lote))
+        plano += sorted(pares, key=lambda p: p[0][0])
+        if len(lote) < len(slots):
+            break  # a fila acabou
+
+    salvar_estado(estado) if not simular else None
+    for (slot, eh_repo), v in plano:
+        video, titulo, desc, side, av = v["video"], v["titulo"], v["desc"], v["side"], v["brier"]
         quando = slot.astimezone(tz).strftime("%d/%m %H:%M") + (" (reposição)" if eh_repo else "")
+        nota = f" [gancho {av['gancho']:.2f}]" if av else ""
         if simular:
-            log(f"[simulação] {video.name} → {quando} | {titulo}")
+            log(f"[simulação] {video.name} → {quando}{nota} | {titulo}")
             continue
         try:
             vid = subir(yt, video, titulo, desc, iso(slot), cfg)
@@ -416,15 +475,19 @@ def cmd_run(cfg, simular=False):
         if side:
             shutil.move(str(side), postados / side.name)
         reg = {"arquivo": video.name, "video_id": vid, "publish_at": iso(slot), "titulo": titulo,
-               "enviado_em": iso(datetime.now(timezone.utc)), "sha256": h}
+               "enviado_em": iso(datetime.now(timezone.utc)), "sha256": v["sha"]}
         if eh_repo:
             reg["reposicao"] = True
+        if av:
+            reg["brier"] = av
         estado["agendados"].append(reg)
-        hashes.add(h)
+        hashes.add(v["sha"])
         salvar_estado(estado)
-        agendados.append(f"{quando} — {titulo}")
-        log(f"AGENDADO {video.name} → {quando} | https://youtube.com/shorts/{vid}")
+        agendados.append(f"{quando}{nota} — {titulo}")
+        log(f"AGENDADO {video.name} → {quando}{nota} | https://youtube.com/shorts/{vid}")
 
+    if brier_falhou:
+        pulados.append("Brier indisponível nesta rodada: vídeos seguiram sem ranking nem hashtags")
     sem_video = len(vagos) - len(agendados) if not erro_envio and not simular else 0
     if vagos and not fila(pasta) and sem_video:
         log(f"Fila vazia: {sem_video} horário(s) ficaram sem vídeo.")
@@ -440,6 +503,12 @@ def cmd_run(cfg, simular=False):
         except Exception as e:
             problemas = [f"Não consegui conferir os agendamentos: {str(e)[:200]}"]
             log(problemas[0])
+
+    if not simular and usar_brier and not brier_falhou:
+        estado = carregar(ESTADO, estado)  # cmd_avaliar grava o cache por conta própria
+        for a in cmd_avaliar(cfg, limite=cfg["brier"].get("avaliar_por_rodada", 6)):
+            pulados.append("Vai precisar de revisão quando chegar a vez: " + a)
+        estado = carregar(ESTADO, estado)
 
     # aviso: só quando houve novidade, ou fila baixa (1x por dia)
     restante = len(fila(pasta))
@@ -466,6 +535,47 @@ def cmd_run(cfg, simular=False):
             estado["aviso_fila_em"] = hoje
             salvar_estado(estado)
         avisar("\n\n".join(partes))
+
+
+def cmd_avaliar(cfg, limite=None):
+    """Passa a fila inteira (ou até `limite` vídeos ainda sem nota) pelo Brier e guarda no cache.
+    Assim a rodada de envio já encontra tudo avaliado e os vídeos arriscados são avisados cedo."""
+    pasta = Path(cfg["pasta_videos"]).expanduser()
+    env = carregar_env()
+    if not env.get("BRIER_KEY"):
+        print("Sem BRIER_KEY no .env.")
+        return []
+    estado = carregar(ESTADO, {"agendados": []})
+    cache = estado.setdefault("brier_cache", {})
+    linhas, novos, alertas = [], 0, []
+    for v in fila(pasta):
+        titulo, desc, _ = metadados(v, cfg)
+        k = brier.chave_cache(sha256(v), titulo, desc)
+        av = cache.get(k)
+        if av is None:
+            if limite is not None and novos >= limite:
+                continue
+            try:
+                av = brier.interpretar(brier.consultar(cfg["brier"], env["BRIER_KEY"],
+                                                       brier.estado_texto(titulo, desc, cfg["canal"])), cfg["brier"])
+            except Exception as e:
+                log(f"Brier indisponível: {e}")
+                break
+            cache[k] = av
+            novos += 1
+            salvar_estado(estado)
+            motivo = brier.segurar(av, cfg["brier"])
+            if motivo:
+                alertas.append(f"{v.name}: {motivo}")
+        linhas.append((av["gancho"], v.name, av))
+    if limite is None:
+        print(f"{'gancho':>6}  {'engan.':>6}  {'risco':>5}  {'público':<9} vídeo  →  hashtags")
+        for g, nome, av in sorted(linhas, key=lambda x: -x[0]):
+            flag = " ⚠️" if brier.segurar(av, cfg["brier"]) else ""
+            print(f"{g:6.2f}  {av['enganoso']:6.0%}  {av['risco']:5.0%}  {str(av['publico']):<9} {nome[:60]}{flag}  →  "
+                  + " ".join("#" + t for t in av["hashtags"]))
+        print(f"{novos} avaliado(s) agora, {len(linhas) - novos} do cache.")
+    return alertas
 
 
 def cmd_status(cfg):
@@ -502,6 +612,10 @@ def main():
     cfg.setdefault("horarios_reserva", [])
     cfg.setdefault("max_por_dia", 6)
     cfg.setdefault("avisar_fila_abaixo_dias", 3)
+    cfg.setdefault("canal", "Dheiver Santos")
+    cfg["brier"] = {"ativo": True, "url": "https://mangabarouter.store/v1", "modelo": "brier-v5",
+                    "corte_risco": 0.8, "corte_enganoso": 0.85, "corte_hashtag": 0.6, "max_hashtags": 4,
+                    **cfg.get("brier", {})}
     if args[0] == "auth":
         credenciais(interativo=True)
         canal = youtube().channels().list(part="snippet", mine=True).execute()["items"][0]["snippet"]["title"]
@@ -516,6 +630,8 @@ def main():
             cmd_run(cfg, simular="--simular" in args)
     elif args[0] == "status":
         cmd_status(cfg)
+    elif args[0] == "avaliar":
+        cmd_avaliar(cfg)
     elif args[0] == "teste-aviso":
         print("Enviado." if avisar("✅ Teste do agendador de Shorts.") else "Não enviado (veja o .env).")
     else:

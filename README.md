@@ -16,6 +16,15 @@ Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube pub
 4. `./instalar-agendamento.sh` faz rodar sozinho a cada 2 horas.
 5. (Opcional) Avisos no Telegram: copie `.env.exemplo` para `.env` e preencha `TELEGRAM_CHAT_ID` e `TELEGRAM_KEYCHAIN_SERVICE` (token no Keychain do macOS) ou `TELEGRAM_BOT_TOKEN` e teste com `.venv/bin/python agente.py teste-aviso`.
 
+## Brier (decisões com probabilidade)
+Cada vídeo passa pelo Brier (`brier-v5` no Mangaba Router, chave `BRIER_KEY` no `.env`), numa só chamada com 16 perguntas:
+- **gancho** (escala 0–4): dentro de cada dia, o vídeo de gancho mais forte fica com o melhor horário (ordem de `horarios`). A sequência da fila continua valendo entre os dias.
+- **enganoso** e **risco** (sim/não): acima de `corte_enganoso` (0,85) ou `corte_risco` (0,8), o vídeo vai para `revisar/` e você é avisado. Basta corrigir o `.txt` e devolver o vídeo para a pasta.
+- **público** (gestor, técnico, provedor ou geral): fica registrado, para cruzar com as views na Fase 2.
+- **hashtags** (12 candidatas, sim/não para cada): até 4 com probabilidade ≥ 0,6 entram na descrição, antes do `#Shorts`.
+
+`agente.py avaliar` passa a fila inteira e mostra o ranking. Cada rodada avalia também até 6 vídeos ainda sem nota, para avisar cedo. As notas ficam em cache no `estado.json`: só são refeitas se o título ou a descrição mudarem. Se o Brier estiver fora do ar, o envio segue sem ele.
+
 ## O que cada rodada faz
 - Agenda os horários vagos de hoje e de amanhã.
 - **Repõe horário perdido** (por exemplo, com o Mac desligado): o vídeo vai para uma hora livre do mesmo dia ou do dia seguinte, sem passar de 30 na semana nem de `max_por_dia` (cota da API). Primeiro usa as horas da lista `horarios` que o dia não usa e depois as de `horarios_reserva`.

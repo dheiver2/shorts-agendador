@@ -146,3 +146,48 @@ AGENDADO = "2026-11-08T15:00:00Z"
 def test_diagnosticar(item, agora, esperado):
     r = agente.diagnosticar(item, AGENDADO, agora)
     assert (r is None) if esperado is None else (esperado in r)
+
+
+# ---------------- Brier ----------------
+import brier  # noqa: E402
+
+CFG_B = {"corte_risco": 0.8, "corte_enganoso": 0.85, "corte_hashtag": 0.6, "max_hashtags": 2}
+
+
+def resposta(gancho_probs, enganoso=0.1, risco=0.1, tags=None):
+    a = {"gancho": {"probabilities": gancho_probs},
+         "enganoso": {"noul": enganoso}, "risco": {"noul": risco},
+         "publico": {"choice": "gestor", "confidence": 0.4}}
+    for t, p in (tags or {}).items():
+        a[f"tag_{t}"] = {"noul": p}
+    return {"answers": a, "model": "brier-v5"}
+
+
+def test_interpretar_gancho_esperado_e_hashtags():
+    av = brier.interpretar(resposta({"0": 0, "1": 0, "2": 0, "3": 0, "4": 1},
+                                    tags={"IA": 0.9, "Telecom": 0.7, "Tecnologia": 0.65, "ChatGPT": 0.2}), CFG_B)
+    assert av["gancho"] == 1.0
+    assert av["hashtags"] == ["IA", "Telecom"]  # ordem por probabilidade, limitado a 2
+    assert av["publico"] == "gestor"
+
+
+def test_segurar_por_risco_e_enganoso():
+    ok = brier.interpretar(resposta({"2": 1}), CFG_B)
+    assert brier.segurar(ok, CFG_B) is None
+    assert "risco" in brier.segurar(brier.interpretar(resposta({"2": 1}, risco=0.9), CFG_B), CFG_B)
+    assert "enganoso" in brier.segurar(brier.interpretar(resposta({"2": 1}, enganoso=0.9), CFG_B), CFG_B)
+
+
+def test_hashtags_entram_antes_do_shorts_sem_repetir():
+    d = brier.descricao_com_hashtags("Texto com #IA\n\n#Shorts", ["IA", "Telecom"])
+    assert d.endswith("#Telecom #Shorts")
+    assert d.count("#IA") == 1
+
+
+def test_distribuir_maior_gancho_no_melhor_horario():
+    pares = brier.distribuir([("a", 0.5), ("b", 0.9), ("c", 0.7)], [(3, "17h"), (0, "12h"), (1, "19h")])
+    assert dict(pares) == {"12h": "b", "19h": "c", "17h": "a"}
+
+
+def test_cache_muda_com_texto():
+    assert brier.chave_cache("h", "t1", "d") != brier.chave_cache("h", "t2", "d")

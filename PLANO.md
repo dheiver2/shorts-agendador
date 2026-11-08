@@ -29,6 +29,10 @@ Tudo implementado e com 23 testes. Primeira reposição real: o horário perdido
 | 1.5 | Evitar duplicados | Calcular o hash de cada arquivo e guardar em `estado.json`. Recusar vídeo já enviado. | O mesmo vídeo colocado duas vezes não sobe duas vezes. |
 | 1.6 | Testes | Testes com pytest para `horarios_do_dia`, `proximos_horarios`, `metadados` e para a validação. | `pytest` passa e cobre a regra de 30 por semana. |
 
+## Brier no agendador (feito em 07/11/2026)
+
+O Brier dá nota de gancho, trava títulos enganosos ou arriscados, classifica o público e escolhe as hashtags. Primeira passada na fila de 24 vídeos: ganchos de 0,50 a 0,71, nenhum vídeo segurado, cerca de 15 s por vídeo. A Fase 2 deve cruzar `gancho` e `publico` com as views das primeiras 48 h para calibrar a nota e os cortes.
+
 ## Fase 2: horários com dados do próprio canal (semana de 16/11)
 
 | # | Ação | Como | Pronto quando |
