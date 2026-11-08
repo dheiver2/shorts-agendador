@@ -47,7 +47,9 @@ O mesmo vídeo sai também no Instagram como **Reel de teste**, na mesma hora em
 - Configuração: uma conta profissional do Instagram ligada a uma Página do Facebook e um token com `instagram_basic` e `instagram_content_publish`. Guarde o token no Keychain (`security add-generic-password -s Instagram -a INSTAGRAM_TOKEN -w 'TOKEN'`) e preencha `INSTAGRAM_KEYCHAIN_SERVICE=Instagram` e `INSTAGRAM_USER_ID` no `.env`. Sem isso, o comando não faz nada.
 - Para publicar como Reel comum, na grade, use `"instagram": {"teste": false}` no `config.json`.
 
-## TikTok
+## TikTok (pausado)
+**Pausado desde 08/11/2026.** Sem a auditoria do TikTok a API só posta privado, e a auditoria não aceita app de uso pessoal; a decisão foi não pedir. O código fica pronto para retomar: login (`tiktok-auth`, Sandbox), envio automático e a tela de aprovação por post (`agente.py tiktok-app`, http://127.0.0.1:8770) no padrão exigido pelo TikTok. Para religar: `"tiktok": {"ativo": true}` no `config.json`.
+
 - Publica pelo Content Posting API (Direct Post), com a mesma legenda do Instagram. Vídeo marcado como IA se `conteudo_sintetico` for `true`.
 - **Enquanto o app não passar pela auditoria do TikTok, os posts saem privados (só você vê)** e a conta precisa estar privada. O agente pede `PUBLIC_TO_EVERYONE` e, se o TikTok não oferecer, usa `SELF_ONLY` e avisa no Telegram.
 - Configuração: crie um app em developers.tiktok.com com **Login Kit** e **Content Posting API** (Direct Post ligado), escopos `user.info.basic` e `video.publish`, e o redirect `https://dheiver2.github.io/shorts-agendador/tiktok/`. Coloque `TIKTOK_CLIENT_KEY` no `.env`, o segredo no Keychain (`security add-generic-password -s TikTok -a TIKTOK_CLIENT_SECRET -w 'SEGREDO'` e `TIKTOK_KEYCHAIN_SERVICE=TikTok` no `.env`) e rode `.venv/bin/python agente.py tiktok-auth`. O token renova sozinho (o login vale 1 ano).

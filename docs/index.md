@@ -6,7 +6,7 @@ nav_order: 1
 # Agendador de Shorts
 {: .fs-9 }
 
-Coloque os vídeos numa pasta. O agente agenda **14 Shorts por dia** no YouTube, de hora em hora entre 07:00 e 20:00, o **Brier** decide o horário de cada um dentro do dia, segura o que precisa de revisão e escolhe as hashtags, e você recebe os avisos no Telegram. O mesmo vídeo sai na mesma hora no **Instagram, como Reel de teste fora da grade do perfil**, e no **TikTok**.
+Coloque os vídeos numa pasta. O agente agenda **14 Shorts por dia** no YouTube, de hora em hora entre 07:00 e 20:00, o **Brier** decide o horário de cada um dentro do dia, segura o que precisa de revisão e escolhe as hashtags, e você recebe os avisos no Telegram. O mesmo vídeo sai na mesma hora no **Instagram, como Reel de teste fora da grade do perfil**. O TikTok está pausado: sem auditoria do TikTok a API só posta privado.
 {: .fs-6 .fw-300 }
 
 [Configurar em 4 passos](configuracao){: .btn .btn-primary .mr-2 }
