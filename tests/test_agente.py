@@ -207,3 +207,27 @@ def test_ordem_de_envio_melhores_horarios_primeiro():
     d2 = brt(2026, 11, 10, 12)
     plano = [((s07, False), "a"), ((s12, False), "b"), ((s19, False), "c"), ((d2, False), "d")]
     assert [v for _, v in agente.ordem_de_envio(plano, prio, tz)] == ["b", "c", "a", "d"]
+
+
+def test_painel_produto_do_titulo():
+    import painel
+    assert painel.produto("Zero custo por chamada | Mangaba Brier #Shorts") == "Mangaba Brier"
+    assert painel.produto("Sem barra #Shorts") == "Outros"
+
+
+def test_coletar_metricas_soma_e_junta_pontos_proximos():
+    class YT:
+        def videos(self): return self
+        def list(self, part, id): self.ids = id.split(","); return self
+        def execute(self):
+            return {"items": [{"id": i, "statistics": {"viewCount": "5", "likeCount": "1"}} for i in self.ids]}
+    agora = datetime(2026, 11, 8, 18, 0, tzinfo=timezone.utc)
+    estado = {"agendados": [
+        {"video_id": "a", "publish_at": "2026-11-08T12:00:00Z"},
+        {"video_id": "b", "publish_at": "2026-11-08T15:00:00Z"},
+        {"video_id": "c", "publish_at": "2026-11-09T15:00:00Z"},  # futuro: não entra
+    ]}
+    agente.coletar_metricas(YT(), estado, agora)
+    agente.coletar_metricas(YT(), estado, agora + timedelta(minutes=5))
+    assert estado["serie"][-1]["views"] == 10 and len(estado["serie"]) == 1
+    assert "metricas" not in estado["agendados"][2]

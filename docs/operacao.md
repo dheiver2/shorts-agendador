@@ -12,6 +12,7 @@ nav_order: 4
 .venv/bin/python agente.py run --simular # o que seria feito, sem enviar nada
 .venv/bin/python agente.py run           # rodada manual (o launchd já faz a cada 2 h)
 .venv/bin/python agente.py avaliar       # ranking do Brier para a fila inteira
+.venv/bin/python agente.py painel        # atualiza as métricas e abre o painel de desempenho
 .venv/bin/python agente.py teste-aviso   # mensagem de teste no Telegram
 .venv/bin/python -m pytest -q            # testes
 ```
@@ -31,7 +32,8 @@ nav_order: 4
 2. **Repõe horário perdido** (por exemplo, com o Mac desligado) numa hora livre da mesma semana, sem passar da meta da semana nem de 14 no dia.
 3. **Confere no YouTube** os agendamentos futuros e os dos últimos 3 dias. Vídeo apagado, rejeitado, com agendamento alterado ou que não ficou público até 30 minutos depois do horário gera aviso.
 4. **Recusa duplicados** pelo hash do arquivo.
-5. **Avisa no Telegram** só quando há novidade, e uma vez por dia quando a fila está acabando.
+5. **Atualiza o painel** (`painel/index.html`, template Tabler) com views, likes e comentários de cada vídeo publicado.
+6. **Avisa no Telegram** só quando há novidade, e uma vez por dia quando a fila está acabando.
 
 Duas rodadas nunca rodam ao mesmo tempo (trava em `.agente.lock`).
 

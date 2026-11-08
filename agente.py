@@ -12,6 +12,7 @@ Uso:
   agente.py status          # fila e próximos agendamentos
   agente.py avaliar         # passa a fila inteira pelo Brier e mostra o ranking
   agente.py teste-aviso     # manda uma mensagem de teste no Telegram
+  agente.py painel          # atualiza as métricas e abre o painel de desempenho
 """
 import fcntl
 import hashlib
@@ -29,6 +30,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import brier
+import painel
 
 BASE = Path(__file__).resolve().parent
 CONFIG = BASE / "config.json"
@@ -38,6 +40,7 @@ CLIENT_SECRET = BASE / "client_secret.json"
 ENV = BASE / ".env"
 LOG = BASE / "agente.log"
 LOCK = BASE / ".agente.lock"
+PAINEL = BASE / "painel" / "index.html"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
           "https://www.googleapis.com/auth/youtube.readonly"]
 EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
@@ -367,6 +370,42 @@ def conferir(yt, cfg, estado, agora_utc):
     return problemas
 
 
+def coletar_metricas(yt, estado, agora_utc):
+    """Views, likes e comentários dos vídeos já publicados (1 unidade de cota a cada 50 vídeos).
+    Guarda o último valor em cada agendado e um ponto na série do total."""
+    publicados = [a for a in estado["agendados"] if de_iso(a["publish_at"]) <= agora_utc]
+    for i in range(0, len(publicados), 50):
+        lote = publicados[i:i + 50]
+        resp = yt.videos().list(part="statistics", id=",".join(a["video_id"] for a in lote)).execute()
+        por_id = {it["id"]: it.get("statistics", {}) for it in resp.get("items", [])}
+        for a in lote:
+            st = por_id.get(a["video_id"])
+            if st is not None:
+                a["metricas"] = {"views": int(st.get("viewCount", 0)), "likes": int(st.get("likeCount", 0)),
+                                 "comentarios": int(st.get("commentCount", 0)), "em": iso(agora_utc)}
+    com = [a["metricas"] for a in publicados if a.get("metricas")]
+    serie = estado.setdefault("serie", [])
+    if serie and agora_utc - de_iso(serie[-1]["em"]) < timedelta(minutes=10):
+        serie.pop()  # coletas seguidas (rodada + painel manual) viram um ponto só
+    serie.append({"em": iso(agora_utc), "views": sum(m["views"] for m in com),
+                  "likes": sum(m["likes"] for m in com), "publicados": len(publicados)})
+    del serie[:-2000]
+
+
+def atualizar_painel(cfg, estado, yt=None):
+    """Coleta métricas (se houver conexão) e regrava painel/index.html."""
+    agora = datetime.now(timezone.utc)
+    if yt is not None:
+        try:
+            coletar_metricas(yt, estado, agora)
+            salvar_estado(estado)
+        except Exception as e:
+            log(f"Não consegui coletar métricas: {str(e)[:200]}")
+    pasta = Path(cfg["pasta_videos"]).expanduser()
+    n = len(fila(pasta)) if pasta.is_dir() else 0
+    return painel.gerar(cfg, estado, n, dias_de_fila(cfg, n), agora, PAINEL)
+
+
 # ---------- comandos ----------
 
 def dias_de_fila(cfg, n_videos):
@@ -540,6 +579,10 @@ def cmd_run(cfg, simular=False):
             pulados.append("Vai precisar de revisão quando chegar a vez: " + a)
         estado = carregar(ESTADO, estado)
 
+    if not simular:
+        estado = carregar(ESTADO, estado)
+        atualizar_painel(cfg, estado, yt)
+
     # aviso: só quando houve novidade, ou fila baixa (1x por dia)
     restante = len(fila(pasta))
     dias = dias_de_fila(cfg, restante)
@@ -663,7 +706,17 @@ def main():
     elif args[0] == "status":
         cmd_status(cfg)
     elif args[0] == "avaliar":
-        cmd_avaliar(cfg)
+        with LOCK.open("w") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            cmd_avaliar(cfg)
+    elif args[0] == "painel":
+        with LOCK.open("w") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)  # espera a rodada em andamento, senão ela regrava o estado antigo
+            estado = carregar(ESTADO, {"agendados": []})
+            destino = atualizar_painel(cfg, estado, None if "--sem-rede" in args else youtube())
+        print(f"Painel: {destino}")
+        if "--nao-abrir" not in args:
+            subprocess.run(["open", str(destino)])
     elif args[0] == "teste-aviso":
         print("Enviado." if avisar("✅ Teste do agendador de Shorts.") else "Não enviado (veja o .env).")
     else:

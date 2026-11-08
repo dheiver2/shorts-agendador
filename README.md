@@ -18,6 +18,14 @@ Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube pub
 4. `./instalar-agendamento.sh` faz rodar sozinho a cada 2 horas.
 5. (Opcional) Avisos no Telegram: copie `.env.exemplo` para `.env` e preencha `TELEGRAM_CHAT_ID` e `TELEGRAM_KEYCHAIN_SERVICE` (token no Keychain do macOS) ou `TELEGRAM_BOT_TOKEN` e teste com `.venv/bin/python agente.py teste-aviso`.
 
+## Painel de desempenho
+`.venv/bin/python agente.py painel` coleta views, likes e comentários na API do YouTube e abre `painel/index.html`. O painel é montado sobre o template de dashboard [Tabler](https://tabler.io) e mostra:
+- números principais: views, publicados e agendados, likes e fila em dias;
+- gráficos de views acumuladas, views por produto, média de views por horário e gancho do Brier × views;
+- tabelas dos vídeos publicados e dos próximos agendamentos.
+
+Cada rodada automática regrava o painel. A página aberta no navegador recarrega sozinha a cada 10 min.
+
 ## Brier (decisões com probabilidade)
 Cada vídeo passa pelo Brier (`brier-v5` no Mangaba Router, chave `BRIER_KEY` no `.env`), numa só chamada com 16 perguntas:
 - **gancho** (escala 0–4): dentro de cada dia, o vídeo de gancho mais forte fica com o melhor horário (ordem de `horarios`). A sequência da fila continua valendo entre os dias.
