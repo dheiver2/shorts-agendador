@@ -6,7 +6,7 @@ nav_order: 1
 # Agendador de Shorts
 {: .fs-9 }
 
-Coloque os vídeos numa pasta. O agente agenda **14 Shorts por dia** no YouTube, de hora em hora entre 07:00 e 20:00, o **Brier** decide o horário de cada um dentro do dia, segura o que precisa de revisão e escolhe as hashtags, e você recebe os avisos no Telegram.
+Coloque os vídeos numa pasta. O agente agenda **14 Shorts por dia** no YouTube, de hora em hora entre 07:00 e 20:00, o **Brier** decide o horário de cada um dentro do dia, segura o que precisa de revisão e escolhe as hashtags, e você recebe os avisos no Telegram. O mesmo vídeo sai no **Instagram como Reel de teste**, fora da grade do perfil, na mesma hora.
 {: .fs-6 .fw-300 }
 
 [Configurar em 4 passos](configuracao){: .btn .btn-primary .mr-2 }
@@ -50,7 +50,7 @@ Medido ao vivo em 08/11/2026:
 |---|---|
 | Agendamentos íntegros no YouTube | 10 de 10 (privados, com a hora certa) |
 | Formato Shorts | 1080×1920, de 55 a 60 s |
-| Testes automáticos | 30 de 30 |
+| Testes automáticos | 43 de 43 |
 | Rodada automática com Brier e aviso | feita em 08/11 às 07:14 |
 | Reposição de horário perdido | 1 de 1 (07/11 21:00 → 08/11 15:00) |
 | **Nota validada** | **80 de 100**: faltam a publicação no horário (15) e a comparação do Brier com as views (5) |

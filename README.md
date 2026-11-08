@@ -28,6 +28,16 @@ Cada rodada automática regrava o painel. A página aberta no navegador recarreg
 
 **Versão pública:** com `painel_publico_repo` no `config.json`, cada rodada também publica o painel em https://dheiver2.github.io/shorts-painel, num repositório próprio com um commit único e sem histórico. Nessa versão, vídeos que ainda não saíram aparecem só com horário e produto, e os alertas internos não aparecem.
 
+## Instagram (Reels de teste)
+O mesmo vídeo sai também no Instagram como **Reel de teste**, na mesma hora em que vai ao ar no YouTube (14 por dia, 07:00–20:00). O Reel de teste é mostrado primeiro para quem não segue a conta e **não entra na grade do perfil**. Ele só vai para a grade se você promover pelo app (`graduation_strategy` MANUAL).
+
+- A API do Instagram não agenda, então um segundo launchd (`br.mangaba.shorts-instagram`) roda `agente.py instagram` às 07:01, 08:01 … 20:01 e publica o que acabou de sair no YouTube.
+- Legenda: título e descrição do YouTube, com as hashtags do Brier, sem o `#Shorts`.
+- Se o Mac estiver desligado, o atraso aceito é de `instagram.max_atraso_h` (2 h). Depois disso, o vídeo não sai no Instagram e você é avisado.
+- Só vale para vídeos que saem no YouTube a partir da primeira rodada com token.
+- Configuração: uma conta profissional do Instagram ligada a uma Página do Facebook e um token com `instagram_basic` e `instagram_content_publish`. Guarde o token no Keychain (`security add-generic-password -s Instagram -a INSTAGRAM_TOKEN -w 'TOKEN'`) e preencha `INSTAGRAM_KEYCHAIN_SERVICE=Instagram` e `INSTAGRAM_USER_ID` no `.env`. Sem isso, o comando não faz nada.
+- Para publicar como Reel comum, na grade, use `"instagram": {"teste": false}` no `config.json`.
+
 ## Brier (decisões com probabilidade)
 Cada vídeo passa pelo Brier (`brier-v5` no Mangaba Router, chave `BRIER_KEY` no `.env`), numa só chamada com 16 perguntas:
 - **gancho** (escala 0–4): dentro de cada dia, o vídeo de gancho mais forte fica com o melhor horário (ordem de `horarios`). A sequência da fila continua valendo entre os dias.

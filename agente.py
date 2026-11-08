@@ -13,6 +13,7 @@ Uso:
   agente.py avaliar         # passa a fila inteira pelo Brier e mostra o ranking
   agente.py teste-aviso     # manda uma mensagem de teste no Telegram
   agente.py painel          # atualiza as métricas e abre o painel de desempenho
+  agente.py instagram       # publica como Reel de teste o que já saiu no YouTube (roda de hora em hora)
 """
 import fcntl
 import hashlib
@@ -30,6 +31,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import brier
+import instagram
 import painel
 
 BASE = Path(__file__).resolve().parent
@@ -92,6 +94,13 @@ def carregar_env():
                            capture_output=True, text=True)
         if r.returncode == 0:
             env["TELEGRAM_BOT_TOKEN"] = r.stdout.strip()
+    servico_ig = env.get("INSTAGRAM_KEYCHAIN_SERVICE")
+    if not env.get("INSTAGRAM_TOKEN") and servico_ig:
+        r = subprocess.run(["security", "find-generic-password", "-w", "-s", servico_ig,
+                            "-a", env.get("INSTAGRAM_KEYCHAIN_ACCOUNT", "INSTAGRAM_TOKEN")],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            env["INSTAGRAM_TOKEN"] = r.stdout.strip()
     return env
 
 
@@ -655,6 +664,66 @@ def cmd_run(cfg, simular=False):
         avisar("\n\n".join(partes))
 
 
+def cmd_instagram(cfg):
+    """Publica como Reel de teste cada vídeo cujo horário no YouTube já chegou.
+    Roda de hora em hora (a API do Instagram não agenda). Sem token, não faz nada."""
+    ig = cfg["instagram"]
+    env = carregar_env()
+    token, ig_user = env.get("INSTAGRAM_TOKEN"), env.get("INSTAGRAM_USER_ID")
+    if not ig["ativo"] or not token or not ig_user:
+        log("Instagram: desligado ou sem INSTAGRAM_TOKEN/INSTAGRAM_USER_ID no .env; nada a fazer.")
+        return
+    tz = ZoneInfo(cfg["fuso"])
+    postados = Path(cfg["pasta_videos"]).expanduser() / "postados"
+    agora = datetime.now(timezone.utc)
+    estado = carregar(ESTADO, {"agendados": []})
+    # começa a contar da primeira rodada com token: o que saiu antes no YouTube não vai para o Instagram
+    if not ig.get("desde") and "instagram_desde" not in estado:
+        estado["instagram_desde"] = iso(agora - timedelta(hours=ig["max_atraso_h"]))
+        salvar_estado(estado)
+    desde = ig.get("desde") or estado["instagram_desde"]
+    a_publicar, perdidos = instagram.pendentes(estado, agora, de_iso(desde), ig["max_atraso_h"], de_iso)
+    feitos, falhas, avisos_perdidos = [], [], []
+    for a in perdidos:
+        a["instagram"] = {"perdido": True}
+        avisos_perdidos.append(f"{de_iso(a['publish_at']).astimezone(tz):%d/%m %H:%M} — {a['titulo']}")
+        log(f"INSTAGRAM perdido (passou de {ig['max_atraso_h']}h): {a['arquivo']}")
+    if perdidos:
+        salvar_estado(estado)
+    for a in a_publicar:
+        video = postados / a["arquivo"]
+        if not video.exists():
+            a["instagram"] = {"perdido": True, "motivo": "arquivo não está em postados/"}
+            salvar_estado(estado)
+            falhas.append(f"{a['arquivo']}: arquivo não está mais em postados/")
+            continue
+        titulo, desc, _ = metadados(video, cfg)
+        if a.get("brier", {}).get("hashtags"):
+            desc = brier.descricao_com_hashtags(desc, a["brier"]["hashtags"])
+        try:
+            post = instagram.publicar_reel(token, ig_user, video, instagram.legenda(a["titulo"], desc),
+                                           teste=ig["teste"])
+        except Exception as e:
+            falhas.append(f"{a['arquivo']}: {str(e)[:300]}")
+            log(f"INSTAGRAM erro {a['arquivo']}: {e}")
+            break  # token ou limite: tenta de novo na próxima hora
+        a["instagram"] = {"id": post, "publicado_em": iso(datetime.now(timezone.utc)), "teste": ig["teste"]}
+        salvar_estado(estado)
+        quando = de_iso(a["publish_at"]).astimezone(tz).strftime("%d/%m %H:%M")
+        feitos.append(f"{quando} — {a['titulo']}")
+        log(f"INSTAGRAM publicado {a['arquivo']} → {post}" + (" (Reel de teste)" if ig["teste"] else ""))
+    if feitos or falhas or avisos_perdidos:
+        modo = "Reels de teste, fora da grade" if ig["teste"] else "Reels"
+        partes = [f"📸 Instagram ({modo})"]
+        if feitos:
+            partes.append("Publicados:\n" + "\n".join(f"• {x}" for x in feitos))
+        if avisos_perdidos:
+            partes.append("Não saíram (o Mac não rodou a tempo):\n" + "\n".join(f"• {x}" for x in avisos_perdidos))
+        if falhas:
+            partes.append("⚠️ Erro:\n" + "\n".join(f"• {x}" for x in falhas))
+        avisar("\n\n".join(partes))
+
+
 def cmd_avaliar(cfg, limite=None):
     """Passa a fila inteira (ou até `limite` vídeos ainda sem nota) pelo Brier e guarda no cache.
     Assim a rodada de envio já encontra tudo avaliado e os vídeos arriscados são avisados cedo."""
@@ -736,6 +805,8 @@ def main():
     cfg["brier"] = {"ativo": True, "url": "https://mangabarouter.store/v1", "modelo": "brier-v5",
                     "corte_risco": 0.8, "corte_enganoso": 0.85, "corte_hashtag": 0.6, "max_hashtags": 4,
                     **cfg.get("brier", {})}
+    cfg["instagram"] = {"ativo": True, "teste": True, "max_atraso_h": 2,
+                        **cfg.get("instagram", {})}
     if args[0] == "auth":
         credenciais(interativo=True)
         canal = youtube().channels().list(part="snippet", mine=True).execute()["items"][0]["snippet"]["title"]
@@ -762,6 +833,10 @@ def main():
         print(f"Painel: {destino}")
         if "--nao-abrir" not in args:
             subprocess.run(["open", str(destino)])
+    elif args[0] == "instagram":
+        with LOCK.open("w") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)  # não disputa o estado.json com a rodada do YouTube
+            cmd_instagram(cfg)
     elif args[0] == "teste-aviso":
         print("Enviado." if avisar("✅ Teste do agendador de Shorts.") else "Não enviado (veja o .env).")
     else:
