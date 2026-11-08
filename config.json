@@ -32,5 +32,8 @@
   "horarios_reserva": [],
   "max_por_dia": 14,
   "avisar_fila_abaixo_dias": 3,
-  "painel_publico_repo": "dheiver2/shorts-painel"
+  "painel_publico_repo": "dheiver2/shorts-painel",
+  "tiktok": {
+    "ativo": false
+  }
 }
