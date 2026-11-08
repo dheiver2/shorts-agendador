@@ -191,3 +191,20 @@ def test_logins_avisa_instagram_perto_de_vencer(monkeypatch):
     ok, prob = agente.checar_logins(cfg)
     assert ok == [] and len(prob) == 2
     assert prob[0].startswith("YouTube") and "vence em" in prob[1]
+
+
+def test_tiktok_sem_auditoria_recusa_publico_e_repete_privado(tmp_path):
+    v = tmp_path / "v.mp4"
+    v.write_bytes(b"1")
+    cham = []
+    base = fake_tiktok(["PUBLIC_TO_EVERYONE", "SELF_ONLY"], cham)
+    tentativas = []
+
+    def chamar(url, json_corpo=None, **kw):
+        if url.endswith("video/init/"):
+            tentativas.append(json_corpo["post_info"]["privacy_level"])
+            if len(tentativas) == 1:
+                return {"error": {"code": "unaudited_client_can_only_post_to_private_accounts", "message": "x"}}
+        return base(url, json_corpo=json_corpo, **kw)
+    r = tiktok.publicar("TK", v, "l", chamar=chamar, dormir=lambda s: None)
+    assert tentativas == ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] and r["privacidade"] == "SELF_ONLY"

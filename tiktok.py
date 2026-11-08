@@ -113,10 +113,17 @@ def publicar(token, video, texto, privacidade="PUBLIC_TO_EVERYONE", ia=False,
                  "disable_comment": False, "disable_duet": False, "disable_stitch": False}
     if ia:
         post_info["is_aigc"] = True
-    ini = _checar(chamar(f"{API}/post/publish/video/init/", token=token, json_corpo={
-        "post_info": post_info,
-        "source_info": {"source": "FILE_UPLOAD", "video_size": tamanho,
-                        "chunk_size": chunk, "total_chunk_count": total}}))
+    corpo = {"post_info": post_info,
+             "source_info": {"source": "FILE_UPLOAD", "video_size": tamanho,
+                             "chunk_size": chunk, "total_chunk_count": total}}
+    try:
+        ini = _checar(chamar(f"{API}/post/publish/video/init/", token=token, json_corpo=corpo))
+    except RuntimeError as e:
+        # app sem auditoria: o TikTok lista "público" nas opções mas só aceita privado
+        if "unaudited_client" not in str(e) or usada == "SELF_ONLY":
+            raise
+        usada = post_info["privacy_level"] = "SELF_ONLY"
+        ini = _checar(chamar(f"{API}/post/publish/video/init/", token=token, json_corpo=corpo))
     publish_id, upload_url = ini["publish_id"], ini["upload_url"]
 
     with video.open("rb") as f:
