@@ -45,3 +45,25 @@ PL
 launchctl bootout gui/$(id -u) "$PLIST_IG" 2>/dev/null || true
 launchctl bootstrap gui/$(id -u) "$PLIST_IG"
 echo "Agendamento do Instagram instalado: $PLIST_IG"
+
+# Tela local de aprovação do TikTok, sempre de pé em http://127.0.0.1:8770
+PLIST_TT="$HOME/Library/LaunchAgents/br.mangaba.shorts-tiktok-app.plist"
+cat > "$PLIST_TT" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>br.mangaba.shorts-tiktok-app</string>
+  <key>ProgramArguments</key><array>
+    <string>$DIR/.venv/bin/python</string><string>$DIR/agente.py</string><string>tiktok-app</string>
+  </array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$DIR/launchd.log</string>
+  <key>StandardErrorPath</key><string>$DIR/launchd.log</string>
+</dict></plist>
+PL
+launchctl bootout gui/$(id -u) "$PLIST_TT" 2>/dev/null || true
+launchctl bootstrap gui/$(id -u) "$PLIST_TT"
+echo "Tela do TikTok instalada: http://127.0.0.1:8770"

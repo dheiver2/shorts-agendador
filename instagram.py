@@ -13,6 +13,7 @@ Fluxo da API (Content Publishing, login pelo Facebook):
   4. POST /{ig_user}/media_publish  creation_id={container}
 """
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -27,8 +28,9 @@ LEGENDA_MAX = 2200
 
 def legenda(titulo, desc):
     """Título + descrição do YouTube, sem o #Shorts (no Instagram vira #reels)."""
-    corpo = (desc or "").replace("#Shorts", "").replace("#shorts", "").strip()
-    texto = titulo.strip() + ("\n\n" + corpo if corpo else "")
+    tira = lambda t: re.sub(r"\s*#shorts\b", "", t or "", flags=re.I).strip()
+    corpo = tira(desc)
+    texto = tira(titulo) + ("\n\n" + corpo if corpo else "")
     return texto[:LEGENDA_MAX]
 
 

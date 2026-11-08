@@ -31,6 +31,7 @@ def test_pendentes_ignora_o_que_saiu_antes_do_inicio():
 
 def test_legenda_tira_shorts_e_limita():
     assert instagram.legenda("Título", "linha\n#ia #Shorts") == "Título\n\nlinha\n#ia"
+    assert instagram.legenda("Quem gasta? | Router #Shorts", "") == "Quem gasta? | Router"
     assert len(instagram.legenda("x" * 3000, "")) == instagram.LEGENDA_MAX
 
 
@@ -235,3 +236,31 @@ def test_publicar_reel_repete_upload_recusado_logo_apos_criar(tmp_path):
 def test_na_grade():
     assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": True}) is True
     assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": False}) is False
+
+
+INFO = {"privacy_level_options": ["PUBLIC_TO_EVERYONE", "SELF_ONLY"], "comment_disabled": False,
+        "duet_disabled": True, "stitch_disabled": False}
+
+
+def test_tiktok_post_info_exige_privacidade_escolhida():
+    import pytest
+    with pytest.raises(ValueError):
+        tiktok.montar_post_info({"titulo": "x"}, INFO)
+
+
+def test_tiktok_post_info_interacoes_desligadas_por_padrao_e_respeita_conta():
+    p = tiktok.montar_post_info({"titulo": "x", "privacidade": "SELF_ONLY", "duet": True}, INFO)
+    assert p["disable_comment"] and p["disable_stitch"] and p["disable_duet"]  # duet bloqueado na conta
+    assert not p["brand_content_toggle"] and not p["brand_organic_toggle"]
+
+
+def test_tiktok_post_info_conteudo_de_marca():
+    import pytest
+    with pytest.raises(ValueError):  # divulgação ligada sem dizer qual
+        tiktok.montar_post_info({"titulo": "x", "privacidade": "PUBLIC_TO_EVERYONE", "comercial": {"ativo": True}}, INFO)
+    with pytest.raises(ValueError):  # conteúdo de marca não pode ser privado
+        tiktok.montar_post_info({"titulo": "x", "privacidade": "SELF_ONLY",
+                                 "comercial": {"ativo": True, "conteudo_marca": True}}, INFO)
+    p = tiktok.montar_post_info({"titulo": "x", "privacidade": "PUBLIC_TO_EVERYONE", "comentar": True,
+                                 "comercial": {"ativo": True, "sua_marca": True}}, INFO)
+    assert p["brand_organic_toggle"] and not p["brand_content_toggle"] and not p["disable_comment"]

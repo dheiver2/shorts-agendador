@@ -15,6 +15,7 @@ Uso:
   agente.py painel          # atualiza as métricas e abre o painel de desempenho
   agente.py espelhos        # repete no Instagram (Reel de teste) e no TikTok o que já saiu no YouTube (de hora em hora)
   agente.py tiktok-auth     # login no TikTok (uma vez)
+  agente.py tiktok-app      # tela local para aprovar cada post no TikTok (http://127.0.0.1:8770)
   agente.py logins          # confere os logins de YouTube, Instagram e TikTok (também roda 1x por dia)
 """
 import fcntl
@@ -780,6 +781,24 @@ def cmd_tiktok(cfg):
         TIKTOK_TOKEN.write_text(json.dumps(tok))
         TIKTOK_TOKEN.chmod(0o600)
 
+    if tk["modo"] == "aprovacao":
+        # o TikTok exige que cada post seja aprovado numa tela (prévia, privacidade escolhida na mão,
+        # consentimento). Aqui só avisamos que há vídeo esperando; o envio sai pela tela local.
+        import tiktok_app
+        estado = carregar(ESTADO, {"agendados": []})
+        if "tiktok_desde" not in estado:
+            estado["tiktok_desde"] = iso(datetime.now(timezone.utc))
+        novos = [p for p in tiktok_app.pendentes(cfg, estado, datetime.now(timezone.utc))
+                 if p["arquivo"] not in estado.setdefault("tiktok_avisados", [])]
+        if novos:
+            estado["tiktok_avisados"] = (estado["tiktok_avisados"] + [p["arquivo"] for p in novos])[-500:]
+            salvar_estado(estado)
+            avisar("🎵 TikTok: vídeo pronto para aprovar\n" + "\n".join(f"• {p['legenda'].splitlines()[0]}" for p in novos)
+                   + f"\n\nAbra no Mac: http://127.0.0.1:{tiktok_app.PORTA}")
+        else:
+            salvar_estado(estado)
+        return
+
     def um(video, texto):
         r = tiktok.publicar(tok["access_token"], video, texto, privacidade=tk["privacidade"],
                             ia=cfg.get("conteudo_sintetico", False))
@@ -957,7 +976,7 @@ def main():
                     **cfg.get("brier", {})}
     cfg["instagram"] = {"ativo": True, "teste": True, "max_atraso_h": 2,
                         **cfg.get("instagram", {})}
-    cfg["tiktok"] = {"ativo": True, "privacidade": "PUBLIC_TO_EVERYONE", "max_atraso_h": 2,
+    cfg["tiktok"] = {"ativo": True, "modo": "aprovacao", "privacidade": "PUBLIC_TO_EVERYONE", "max_atraso_h": 2,
                      "redirect_uri": "https://dheiver2.github.io/shorts-agendador/tiktok/",
                      **cfg.get("tiktok", {})}
     if args[0] == "auth":
@@ -995,6 +1014,9 @@ def main():
         with LOCK.open("w") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)
             cmd_logins(cfg)
+    elif args[0] == "tiktok-app":
+        import tiktok_app
+        tiktok_app.servir(cfg)
     elif args[0] == "tiktok-auth":
         cmd_tiktok_auth(cfg)
     elif args[0] == "teste-aviso":

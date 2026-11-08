@@ -147,3 +147,54 @@ def publicar(token, video, texto, privacidade="PUBLIC_TO_EVERYONE", ia=False,
         if time.time() - inicio > espera_max_s:
             raise RuntimeError("TikTok demorou demais para processar o vídeo")
         dormir(10)
+
+
+# ---------- envio com aprovação manual (tela local, padrão exigido pela auditoria) ----------
+
+def creator_info(token, chamar=_req):
+    return _checar(chamar(f"{API}/post/publish/creator_info/query/", json_corpo={}, token=token))
+
+
+def enviar(token, video, post_info, chamar=_req):
+    """Inicia o post com as escolhas feitas na tela e sobe o arquivo. Devolve o publish_id.
+    Não escolhe nada sozinho: privacidade, interações e divulgação vêm de quem aprovou."""
+    tamanho = video.stat().st_size
+    chunk, total, faixas = pedacos(tamanho)
+    ini = _checar(chamar(f"{API}/post/publish/video/init/", token=token, json_corpo={
+        "post_info": post_info,
+        "source_info": {"source": "FILE_UPLOAD", "video_size": tamanho,
+                        "chunk_size": chunk, "total_chunk_count": total}}))
+    with video.open("rb") as f:
+        for a, b in faixas:
+            f.seek(a)
+            pedaco = f.read(b - a + 1)
+            chamar(ini["upload_url"], corpo=pedaco, metodo="PUT", timeout=600, cabecalhos={
+                "Content-Type": "video/mp4", "Content-Length": str(len(pedaco)),
+                "Content-Range": f"bytes {a}-{b}/{tamanho}"})
+    return ini["publish_id"]
+
+
+def status(token, publish_id, chamar=_req):
+    return _checar(chamar(f"{API}/post/publish/status/fetch/", token=token, json_corpo={"publish_id": publish_id}))
+
+
+def montar_post_info(escolhas, info):
+    """Valida as escolhas da tela contra o creator_info, como pedem as regras do TikTok."""
+    priv = escolhas.get("privacidade")
+    if priv not in (info.get("privacy_level_options") or []):
+        raise ValueError("Escolha a privacidade.")
+    com = escolhas.get("comercial") or {}
+    if com.get("ativo") and not (com.get("sua_marca") or com.get("conteudo_marca")):
+        raise ValueError("Marque se é a sua marca ou conteúdo de marca de terceiros.")
+    if com.get("conteudo_marca") and priv == "SELF_ONLY":
+        raise ValueError("Conteúdo de marca não pode ser privado.")
+    titulo = (escolhas.get("titulo") or "").strip()
+    if not titulo:
+        raise ValueError("A legenda está vazia.")
+    return {"title": titulo[:LEGENDA_MAX], "privacy_level": priv,
+            "disable_comment": info.get("comment_disabled") or not escolhas.get("comentar"),
+            "disable_duet": info.get("duet_disabled") or not escolhas.get("duet"),
+            "disable_stitch": info.get("stitch_disabled") or not escolhas.get("stitch"),
+            "brand_content_toggle": bool(com.get("ativo") and com.get("conteudo_marca")),
+            "brand_organic_toggle": bool(com.get("ativo") and com.get("sua_marca")),
+            **({"is_aigc": True} if escolhas.get("ia") else {})}
