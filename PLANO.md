@@ -16,7 +16,9 @@ Situação em 07/11/2026:
 6. **Sem retorno de desempenho.** O agente não sabe quais vídeos funcionaram.
 7. **Cota gratuita da API** (10.000 unidades por dia): dá no máximo 6 envios por dia. A regra atual usa 4 ou 5.
 
-## Fase 1: confiabilidade (semana de 09/11)
+## Fase 1: confiabilidade (feita em 07/11/2026)
+
+Tudo implementado e com 23 testes. Primeira reposição real: o horário perdido de 07/11 às 21:00 foi reposto em 08/11 às 15:00. Falta só o token do bot do Telegram no `.env`.
 
 | # | Ação | Como | Pronto quando |
 |---|------|------|---------------|

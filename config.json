@@ -19,5 +19,11 @@
   "tags": [],
   "categoria_id": "22",
   "feito_para_criancas": false,
-  "conteudo_sintetico": false
+  "conteudo_sintetico": false,
+  "horarios_reserva": [
+    "15:00",
+    "10:00"
+  ],
+  "max_por_dia": 6,
+  "avisar_fila_abaixo_dias": 3
 }

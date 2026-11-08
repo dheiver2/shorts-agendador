@@ -13,7 +13,19 @@ Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube pub
 1. No Google Cloud Console: crie um projeto, ative a **YouTube Data API v3**, configure a tela de consentimento OAuth (tipo Externo, adicione seu e-mail como usuário de teste) e crie uma credencial **ID do cliente OAuth → App para computador**. Baixe o JSON e salve como `client_secret.json` nesta pasta.
 2. `.venv/bin/python agente.py auth` abre o navegador para o login no canal.
 3. `.venv/bin/python agente.py run --simular` mostra o que seria agendado.
-4. `./instalar-agendamento.sh` faz rodar sozinho todo dia às 08:00 e 17:00.
+4. `./instalar-agendamento.sh` faz rodar sozinho a cada 2 horas.
+5. (Opcional) Avisos no Telegram: copie `.env.exemplo` para `.env`, preencha `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` e teste com `.venv/bin/python agente.py teste-aviso`.
+
+## O que cada rodada faz
+- Agenda os horários vagos de hoje e de amanhã.
+- **Repõe horário perdido** (por exemplo, com o Mac desligado): o vídeo vai para uma hora livre do mesmo dia ou do dia seguinte, sem passar de 30 na semana nem de `max_por_dia` (cota da API). Primeiro usa as horas da lista `horarios` que o dia não usa e depois as de `horarios_reserva`.
+- **Confere no YouTube** os agendamentos futuros e os dos últimos 3 dias: vídeo apagado, rejeitado, agendamento alterado ou vídeo que não ficou público no horário geram aviso.
+- **Recusa duplicados** pelo hash do arquivo. O duplicado vai para `rejeitados/`.
+- **Avisa no Telegram** só quando há novidade (agendou, recusou, deu erro ou problema na conferência), e uma vez por dia quando a fila tem menos de `avisar_fila_abaixo_dias` dias de vídeo.
+- Duas rodadas nunca rodam ao mesmo tempo (trava em `.agente.lock`).
+
+## Testes
+`.venv/bin/python -m pytest -q`
 
 ## Auditoria da API (não foi necessária neste canal)
 Teste de 07/11/2026: o vídeo ficou "Agendado" no Studio, sem trava. Se um dia aparecer "privado (restrito)", vale o texto abaixo.

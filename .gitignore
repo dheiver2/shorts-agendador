@@ -6,3 +6,6 @@ estado.json
 launchd.log
 *.tmp
 __pycache__/
+.env
+.agente.lock
+.pytest_cache/
