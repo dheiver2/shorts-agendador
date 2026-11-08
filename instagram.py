@@ -32,13 +32,13 @@ def legenda(titulo, desc):
     return texto[:LEGENDA_MAX]
 
 
-def pendentes(estado, agora_utc, desde_utc, max_atraso_h, de_iso):
+def pendentes(estado, agora_utc, desde_utc, max_atraso_h, de_iso, chave="instagram"):
     """Divide os vídeos do YouTube ainda sem Instagram em (a_publicar, perdidos).
     a_publicar: horário já chegou, dentro do atraso aceito; o mais antigo primeiro.
     perdidos: passaram do atraso (Mac desligado, por exemplo) e não saem mais."""
     a_publicar, perdidos = [], []
     for a in estado.get("agendados", []):
-        if "instagram" in a:
+        if chave in a:
             continue
         quando = de_iso(a["publish_at"])
         if quando < desde_utc or quando > agora_utc:

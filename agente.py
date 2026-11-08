@@ -13,7 +13,8 @@ Uso:
   agente.py avaliar         # passa a fila inteira pelo Brier e mostra o ranking
   agente.py teste-aviso     # manda uma mensagem de teste no Telegram
   agente.py painel          # atualiza as métricas e abre o painel de desempenho
-  agente.py instagram       # publica como Reel de teste o que já saiu no YouTube (roda de hora em hora)
+  agente.py espelhos        # repete no Instagram (Reel de teste) e no TikTok o que já saiu no YouTube (de hora em hora)
+  agente.py tiktok-auth     # login no TikTok (uma vez)
 """
 import fcntl
 import hashlib
@@ -32,6 +33,7 @@ from zoneinfo import ZoneInfo
 
 import brier
 import instagram
+import tiktok
 import painel
 
 BASE = Path(__file__).resolve().parent
@@ -42,6 +44,7 @@ CLIENT_SECRET = BASE / "client_secret.json"
 ENV = BASE / ".env"
 LOG = BASE / "agente.log"
 LOCK = BASE / ".agente.lock"
+TIKTOK_TOKEN = BASE / "tiktok_token.json"
 PAINEL = BASE / "painel" / "index.html"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
           "https://www.googleapis.com/auth/youtube.readonly"]
@@ -664,57 +667,51 @@ def cmd_run(cfg, simular=False):
         avisar("\n\n".join(partes))
 
 
-def cmd_instagram(cfg):
-    """Publica como Reel de teste cada vídeo cujo horário no YouTube já chegou.
-    Roda de hora em hora (a API do Instagram não agenda). Sem token, não faz nada."""
-    ig = cfg["instagram"]
-    env = carregar_env()
-    token, ig_user = env.get("INSTAGRAM_TOKEN"), env.get("INSTAGRAM_USER_ID")
-    if not ig["ativo"] or not token or not ig_user:
-        log("Instagram: desligado ou sem INSTAGRAM_TOKEN/INSTAGRAM_USER_ID no .env; nada a fazer.")
-        return
+def espelhar(cfg, chave, nome, cab, conf, publicar_um):
+    """Repete na rede `chave` cada vídeo cujo horário no YouTube já chegou (mesma grade:
+    14 por dia, 07–20h). As APIs do Instagram e do TikTok não agendam, então isto roda
+    de hora em hora. `publicar_um(video, legenda)` devolve (registro, observação)."""
     tz = ZoneInfo(cfg["fuso"])
     postados = Path(cfg["pasta_videos"]).expanduser() / "postados"
     agora = datetime.now(timezone.utc)
     estado = carregar(ESTADO, {"agendados": []})
-    # começa a contar da primeira rodada com token: o que saiu antes no YouTube não vai para o Instagram
-    if not ig.get("desde") and "instagram_desde" not in estado:
-        estado["instagram_desde"] = iso(agora - timedelta(hours=ig["max_atraso_h"]))
+    # começa a contar da primeira rodada com login: o que saiu antes no YouTube não é repetido
+    marca = f"{chave}_desde"
+    if not conf.get("desde") and marca not in estado:
+        estado[marca] = iso(agora - timedelta(hours=conf["max_atraso_h"]))
         salvar_estado(estado)
-    desde = ig.get("desde") or estado["instagram_desde"]
-    a_publicar, perdidos = instagram.pendentes(estado, agora, de_iso(desde), ig["max_atraso_h"], de_iso)
+    desde = conf.get("desde") or estado[marca]
+    a_publicar, perdidos = instagram.pendentes(estado, agora, de_iso(desde), conf["max_atraso_h"], de_iso, chave)
     feitos, falhas, avisos_perdidos = [], [], []
     for a in perdidos:
-        a["instagram"] = {"perdido": True}
+        a[chave] = {"perdido": True}
         avisos_perdidos.append(f"{de_iso(a['publish_at']).astimezone(tz):%d/%m %H:%M} — {a['titulo']}")
-        log(f"INSTAGRAM perdido (passou de {ig['max_atraso_h']}h): {a['arquivo']}")
+        log(f"{nome.upper()} perdido (passou de {conf['max_atraso_h']}h): {a['arquivo']}")
     if perdidos:
         salvar_estado(estado)
     for a in a_publicar:
         video = postados / a["arquivo"]
         if not video.exists():
-            a["instagram"] = {"perdido": True, "motivo": "arquivo não está em postados/"}
+            a[chave] = {"perdido": True, "motivo": "arquivo não está em postados/"}
             salvar_estado(estado)
             falhas.append(f"{a['arquivo']}: arquivo não está mais em postados/")
             continue
-        titulo, desc, _ = metadados(video, cfg)
+        _, desc, _ = metadados(video, cfg)
         if a.get("brier", {}).get("hashtags"):
             desc = brier.descricao_com_hashtags(desc, a["brier"]["hashtags"])
         try:
-            post = instagram.publicar_reel(token, ig_user, video, instagram.legenda(a["titulo"], desc),
-                                           teste=ig["teste"])
+            reg, obs = publicar_um(video, instagram.legenda(a["titulo"], desc))
         except Exception as e:
             falhas.append(f"{a['arquivo']}: {str(e)[:300]}")
-            log(f"INSTAGRAM erro {a['arquivo']}: {e}")
-            break  # token ou limite: tenta de novo na próxima hora
-        a["instagram"] = {"id": post, "publicado_em": iso(datetime.now(timezone.utc)), "teste": ig["teste"]}
+            log(f"{nome.upper()} erro {a['arquivo']}: {e}")
+            break  # login ou limite: tenta de novo na próxima hora
+        a[chave] = {**reg, "publicado_em": iso(datetime.now(timezone.utc))}
         salvar_estado(estado)
         quando = de_iso(a["publish_at"]).astimezone(tz).strftime("%d/%m %H:%M")
-        feitos.append(f"{quando} — {a['titulo']}")
-        log(f"INSTAGRAM publicado {a['arquivo']} → {post}" + (" (Reel de teste)" if ig["teste"] else ""))
+        feitos.append(f"{quando} — {a['titulo']}" + (f" ({obs})" if obs else ""))
+        log(f"{nome.upper()} publicado {a['arquivo']} → {reg}")
     if feitos or falhas or avisos_perdidos:
-        modo = "Reels de teste, fora da grade" if ig["teste"] else "Reels"
-        partes = [f"📸 Instagram ({modo})"]
+        partes = [cab]
         if feitos:
             partes.append("Publicados:\n" + "\n".join(f"• {x}" for x in feitos))
         if avisos_perdidos:
@@ -722,6 +719,89 @@ def cmd_instagram(cfg):
         if falhas:
             partes.append("⚠️ Erro:\n" + "\n".join(f"• {x}" for x in falhas))
         avisar("\n\n".join(partes))
+
+
+def cmd_instagram(cfg):
+    """Reel de teste (fora da grade do perfil) na hora em que o vídeo sai no YouTube."""
+    ig = cfg["instagram"]
+    env = carregar_env()
+    token, ig_user = env.get("INSTAGRAM_TOKEN"), env.get("INSTAGRAM_USER_ID")
+    if not ig["ativo"] or not token or not ig_user:
+        log("Instagram: desligado ou sem INSTAGRAM_TOKEN/INSTAGRAM_USER_ID no .env; nada a fazer.")
+        return
+
+    def um(video, texto):
+        return {"id": instagram.publicar_reel(token, ig_user, video, texto, teste=ig["teste"]),
+                "teste": ig["teste"]}, None
+
+    modo = "Reels de teste, fora da grade" if ig["teste"] else "Reels"
+    espelhar(cfg, "instagram", "Instagram", f"📸 Instagram ({modo})", ig, um)
+
+
+def tiktok_credenciais():
+    env = carregar_env()
+    chave = env.get("TIKTOK_CLIENT_KEY")
+    segredo = env.get("TIKTOK_CLIENT_SECRET")
+    if not segredo and env.get("TIKTOK_KEYCHAIN_SERVICE"):
+        r = subprocess.run(["security", "find-generic-password", "-w", "-s", env["TIKTOK_KEYCHAIN_SERVICE"],
+                            "-a", "TIKTOK_CLIENT_SECRET"], capture_output=True, text=True)
+        segredo = r.stdout.strip() if r.returncode == 0 else None
+    return chave, segredo
+
+
+def cmd_tiktok(cfg):
+    """Post no TikTok na hora em que o vídeo sai no YouTube. Sem login, não faz nada."""
+    tk = cfg["tiktok"]
+    chave, segredo = tiktok_credenciais()
+    tok = carregar(TIKTOK_TOKEN, None)
+    if not tk["ativo"] or not chave or not segredo or not tok:
+        log("TikTok: desligado, sem TIKTOK_CLIENT_KEY/segredo ou sem login (agente.py tiktok-auth); nada a fazer.")
+        return
+    try:
+        tok, mudou = tiktok.token_valido(tok, chave, segredo)
+    except Exception as e:
+        hoje = datetime.now(ZoneInfo(cfg["fuso"])).date().isoformat()
+        estado = carregar(ESTADO, {"agendados": []})
+        if estado.get("aviso_tiktok_login_em") != hoje:
+            estado["aviso_tiktok_login_em"] = hoje
+            salvar_estado(estado)
+            avisar(f"🎵 TikTok: {e}")
+        log(f"TikTok: {e}")
+        return
+    if mudou:
+        TIKTOK_TOKEN.write_text(json.dumps(tok))
+        TIKTOK_TOKEN.chmod(0o600)
+
+    def um(video, texto):
+        r = tiktok.publicar(tok["access_token"], video, texto, privacidade=tk["privacidade"],
+                            ia=cfg.get("conteudo_sintetico", False))
+        obs = "privado: o app ainda não passou na auditoria do TikTok" if r["privacidade"] != tk["privacidade"] else None
+        return r, obs
+
+    espelhar(cfg, "tiktok", "TikTok", "🎵 TikTok", tk, um)
+
+
+def cmd_tiktok_auth(cfg):
+    chave, segredo = tiktok_credenciais()
+    if not chave or not segredo:
+        raise SystemExit("Falta TIKTOK_CLIENT_KEY no .env e o segredo (TIKTOK_CLIENT_SECRET ou Keychain).")
+    redirect = cfg["tiktok"]["redirect_uri"]
+    url = tiktok.url_login(chave, redirect)
+    print("Abrindo o login do TikTok. Se não abrir, use:\n" + url)
+    subprocess.run(["open", url])
+    codigo = input("Cole aqui o código que aparece na página depois de autorizar: ")
+    tok = tiktok.trocar_codigo(chave, segredo, urllib.parse.unquote(codigo), redirect)
+    TIKTOK_TOKEN.write_text(json.dumps(tok))
+    TIKTOK_TOKEN.chmod(0o600)
+    print("Login do TikTok OK.")
+
+
+def cmd_espelhos(cfg):
+    for fn in (cmd_instagram, cmd_tiktok):
+        try:
+            fn(cfg)
+        except Exception as e:  # uma rede com problema não segura a outra
+            log(f"Erro em {fn.__name__}: {e}")
 
 
 def cmd_avaliar(cfg, limite=None):
@@ -807,6 +887,9 @@ def main():
                     **cfg.get("brier", {})}
     cfg["instagram"] = {"ativo": True, "teste": True, "max_atraso_h": 2,
                         **cfg.get("instagram", {})}
+    cfg["tiktok"] = {"ativo": True, "privacidade": "PUBLIC_TO_EVERYONE", "max_atraso_h": 2,
+                     "redirect_uri": "https://dheiver2.github.io/shorts-agendador/tiktok/",
+                     **cfg.get("tiktok", {})}
     if args[0] == "auth":
         credenciais(interativo=True)
         canal = youtube().channels().list(part="snippet", mine=True).execute()["items"][0]["snippet"]["title"]
@@ -833,10 +916,13 @@ def main():
         print(f"Painel: {destino}")
         if "--nao-abrir" not in args:
             subprocess.run(["open", str(destino)])
-    elif args[0] == "instagram":
+    elif args[0] in ("instagram", "tiktok", "espelhos"):
+        fn = {"instagram": cmd_instagram, "tiktok": cmd_tiktok, "espelhos": cmd_espelhos}[args[0]]
         with LOCK.open("w") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)  # não disputa o estado.json com a rodada do YouTube
-            cmd_instagram(cfg)
+            fn(cfg)
+    elif args[0] == "tiktok-auth":
+        cmd_tiktok_auth(cfg)
     elif args[0] == "teste-aviso":
         print("Enviado." if avisar("✅ Teste do agendador de Shorts.") else "Não enviado (veja o .env).")
     else:

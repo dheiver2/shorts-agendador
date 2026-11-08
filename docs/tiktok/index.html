@@ -1,0 +1,26 @@
+---
+layout: null
+permalink: /tiktok/
+---
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login do TikTok</title>
+<style>body{font:16px system-ui,sans-serif;max-width:560px;margin:48px auto;padding:0 16px;color:#222;background:#FFF8EE}
+code{display:block;word-break:break-all;background:#fff;border:1px solid #E94A12;padding:12px;border-radius:8px;font-size:15px}
+button{margin-top:12px;background:#E94A12;color:#fff;border:0;padding:10px 16px;border-radius:8px;font-size:15px;cursor:pointer}</style>
+</head><body>
+<h1>Agendador de Shorts · TikTok</h1>
+<div id="r">Carregando…</div>
+<script>
+const q = new URLSearchParams(location.search), r = document.getElementById("r");
+const t = s => document.createTextNode(s);
+if (q.get("code")) {
+  const c = document.createElement("code"); c.textContent = q.get("code");
+  const b = document.createElement("button"); b.textContent = "Copiar código";
+  b.onclick = () => navigator.clipboard.writeText(q.get("code")).then(() => b.textContent = "Copiado ✓");
+  r.replaceChildren(t("Login autorizado. Cole este código no terminal, onde o agente.py tiktok-auth está esperando:"), c, b);
+} else {
+  r.replaceChildren(t("O TikTok não devolveu código. " + (q.get("error_description") || q.get("error") || "Rode o agente.py tiktok-auth de novo.")));
+}
+</script>
+</body></html>

@@ -91,3 +91,85 @@ def test_publicar_reel_erro_de_processamento(tmp_path):
         assert "formato" in str(e)
     else:
         raise AssertionError("devia falhar")
+
+
+# ---------- TikTok ----------
+import tiktok  # noqa: E402
+
+
+def test_tiktok_pedacos():
+    assert tiktok.pedacos(30 * tiktok.MB) == (30 * tiktok.MB, 1, [(0, 30 * tiktok.MB - 1)])
+    tam, total, faixas = tiktok.pedacos(75 * tiktok.MB)
+    assert tam == 10 * tiktok.MB and total == 7
+    assert faixas[-1] == (60 * tiktok.MB, 75 * tiktok.MB - 1)  # o último absorve o resto
+    assert sum(b - a + 1 for a, b in faixas) == 75 * tiktok.MB
+
+
+def fake_tiktok(opcoes, chamadas, status=("PROCESSING_UPLOAD", "PUBLISH_COMPLETE")):
+    st = iter(status)
+
+    def chamar(url, json_corpo=None, form=None, token=None, metodo=None, corpo=None, cabecalhos=None, timeout=60):
+        chamadas.append((url, json_corpo, corpo, cabecalhos))
+        ok = {"error": {"code": "ok"}}
+        if url.endswith("creator_info/query/"):
+            return {**ok, "data": {"privacy_level_options": opcoes}}
+        if url.endswith("video/init/"):
+            return {**ok, "data": {"publish_id": "P1", "upload_url": "https://up/x"}}
+        if url.endswith("status/fetch/"):
+            s = next(st)
+            return {**ok, "data": {"status": s, "publicaly_available_post_id": [123] if s == "PUBLISH_COMPLETE" else []}}
+        return {}
+    return chamar
+
+
+def test_tiktok_publica_publico_quando_permitido(tmp_path):
+    v = tmp_path / "v.mp4"
+    v.write_bytes(b"12345")
+    cham = []
+    r = tiktok.publicar("TK", v, "leg", chamar=fake_tiktok(["PUBLIC_TO_EVERYONE", "SELF_ONLY"], cham),
+                        dormir=lambda s: None)
+    assert r == {"publish_id": "P1", "privacidade": "PUBLIC_TO_EVERYONE", "post_id": "123"}
+    init = cham[1][1]
+    assert init["source_info"] == {"source": "FILE_UPLOAD", "video_size": 5, "chunk_size": 5, "total_chunk_count": 1}
+    assert cham[2][0] == "https://up/x" and cham[2][2] == b"12345" and cham[2][3]["Content-Range"] == "bytes 0-4/5"
+
+
+def test_tiktok_sem_auditoria_cai_para_privado(tmp_path):
+    v = tmp_path / "v.mp4"
+    v.write_bytes(b"1")
+    cham = []
+    r = tiktok.publicar("TK", v, "leg", chamar=fake_tiktok(["SELF_ONLY"], cham), dormir=lambda s: None)
+    assert r["privacidade"] == "SELF_ONLY" and cham[1][1]["post_info"]["privacy_level"] == "SELF_ONLY"
+
+
+def test_tiktok_falha_mostra_motivo(tmp_path):
+    v = tmp_path / "v.mp4"
+    v.write_bytes(b"1")
+    try:
+        tiktok.publicar("TK", v, "l", chamar=fake_tiktok(["SELF_ONLY"], [], status=("FAILED",)), dormir=lambda s: None)
+    except RuntimeError as e:
+        assert "não publicou" in str(e)
+    else:
+        raise AssertionError("devia falhar")
+
+
+def test_tiktok_renova_token_perto_de_vencer():
+    tok = {"access_token": "A", "refresh_token": "R", "expira_em": 1000 + 600, "refresh_expira_em": 10**9}
+    vistos = []
+
+    def chamar(url, form=None, **kw):
+        vistos.append(form)
+        return {"access_token": "B", "refresh_token": "R2", "expires_in": 86400, "refresh_expires_in": 100}
+    novo, mudou = tiktok.token_valido(tok, "K", "S", chamar=chamar, agora=1000)
+    assert mudou and novo["access_token"] == "B" and vistos[0]["grant_type"] == "refresh_token"
+    assert tiktok.token_valido(novo, "K", "S", chamar=chamar, agora=1000) == (novo, False)
+
+
+def test_tiktok_login_vencido_pede_auth():
+    tok = {"access_token": "A", "refresh_token": "R", "expira_em": 0, "refresh_expira_em": 5}
+    try:
+        tiktok.token_valido(tok, "K", "S", agora=10)
+    except RuntimeError as e:
+        assert "tiktok-auth" in str(e)
+    else:
+        raise AssertionError("devia falhar")
