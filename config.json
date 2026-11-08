@@ -1,12 +1,21 @@
 {
   "pasta_videos": "~/Movies/Shorts-para-postar",
-  "posts_por_semana": 30,
+  "posts_por_semana": 98,
   "horarios": [
     "12:00",
     "19:00",
-    "21:00",
+    "20:00",
+    "18:00",
     "17:00",
-    "09:00"
+    "13:00",
+    "11:00",
+    "14:00",
+    "16:00",
+    "10:00",
+    "15:00",
+    "09:00",
+    "08:00",
+    "07:00"
   ],
   "dias_extra": [
     "sab",
@@ -20,10 +29,7 @@
   "categoria_id": "22",
   "feito_para_criancas": false,
   "conteudo_sintetico": false,
-  "horarios_reserva": [
-    "15:00",
-    "10:00"
-  ],
-  "max_por_dia": 6,
+  "horarios_reserva": [],
+  "max_por_dia": 14,
   "avisar_fila_abaixo_dias": 3
 }

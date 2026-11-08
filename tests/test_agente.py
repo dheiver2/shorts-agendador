@@ -191,3 +191,19 @@ def test_distribuir_maior_gancho_no_melhor_horario():
 
 def test_cache_muda_com_texto():
     assert brier.chave_cache("h", "t1", "d") != brier.chave_cache("h", "t2", "d")
+
+
+def test_fim_da_cota_meia_noite_do_pacifico():
+    # 08/11 11:35 BRT = 14:35 UTC; meia-noite PST de 09/11 = 08:00 UTC = 05:00 BRT
+    agora = datetime(2026, 11, 8, 14, 35, tzinfo=timezone.utc)
+    assert agente.fim_da_cota(agora) == datetime(2026, 11, 9, 8, 0, tzinfo=timezone.utc)
+
+
+def test_ordem_de_envio_melhores_horarios_primeiro():
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/Sao_Paulo")
+    prio = ["12:00", "19:00", "07:00"]
+    s07, s12, s19 = brt(2026, 11, 9, 7), brt(2026, 11, 9, 12), brt(2026, 11, 9, 19)
+    d2 = brt(2026, 11, 10, 12)
+    plano = [((s07, False), "a"), ((s12, False), "b"), ((s19, False), "c"), ((d2, False), "d")]
+    assert [v for _, v in agente.ordem_de_envio(plano, prio, tz)] == ["b", "c", "a", "d"]

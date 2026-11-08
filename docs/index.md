@@ -6,7 +6,7 @@ nav_order: 1
 # Agendador de Shorts
 {: .fs-9 }
 
-Coloque os vídeos numa pasta. O agente agenda **30 Shorts por semana** no YouTube, o **Brier** decide o horário de cada um dentro do dia, segura o que precisa de revisão e escolhe as hashtags, e você recebe os avisos no Telegram.
+Coloque os vídeos numa pasta. O agente agenda **14 Shorts por dia** no YouTube, de hora em hora entre 07:00 e 20:00, o **Brier** decide o horário de cada um dentro do dia, segura o que precisa de revisão e escolhe as hashtags, e você recebe os avisos no Telegram.
 {: .fs-6 .fw-300 }
 
 [Configurar em 4 passos](configuracao){: .btn .btn-primary .mr-2 }
@@ -37,9 +37,9 @@ flowchart TD
 
 | | seg | ter | qua | qui | sex | sáb | dom |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| Posts | 4 | 4 | 4 | 4 | 4 | 5 | 5 |
+| Posts | 14 | 14 | 14 | 14 | 14 | 14 | 14 |
 
-Os horários são **12:00, 17:00, 19:00 e 21:00**. No fim de semana entra também o das **09:00** (horário de Brasília). Dentro de cada dia, o vídeo de gancho mais forte fica com o melhor horário, nesta ordem: 12:00, 19:00, 21:00, 17:00 e 09:00. [Como o Brier decide](brier).
+Um vídeo por hora, das **07:00 às 20:00** (horário de Brasília), 98 por semana. Dentro de cada dia, o vídeo de gancho mais forte fica com o melhor horário, nesta ordem: 12:00, 19:00, 20:00, 18:00, 17:00, 13:00, 11:00, 14:00, 16:00, 10:00, 15:00, 09:00, 08:00, 07:00. Se a cota diária da API acabar, os melhores horários são enviados primeiro e o agente para de tentar até a cota zerar (05:00, meia-noite no Pacífico). [Como o Brier decide](brier).
 
 ## Situação validada
 
@@ -49,7 +49,7 @@ Medido ao vivo em 08/11/2026:
 |---|---|
 | Agendamentos íntegros no YouTube | 10 de 10 (privados, com a hora certa) |
 | Formato Shorts | 1080×1920, de 55 a 60 s |
-| Testes automáticos | 28 de 28 |
+| Testes automáticos | 30 de 30 |
 | Rodada automática com Brier e aviso | feita em 08/11 às 07:14 |
 | Reposição de horário perdido | 1 de 1 (07/11 21:00 → 08/11 15:00) |
 | **Nota validada** | **80 de 100**: faltam a publicação no horário (15) e a comparação do Brier com as views (5) |

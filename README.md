@@ -2,7 +2,7 @@
 
 **Documentação:** https://dheiver2.github.io/shorts-agendador · **Plano:** [docs/plano.md](docs/plano.md)
 
-Pega os vídeos da pasta `~/Movies/Shorts-para-postar` e agenda **30 por semana** no YouTube: 4 por dia de segunda a sexta (12:00, 17:00, 19:00, 21:00) e 5 no sábado e no domingo (mais 09:00), horário de Brasília.
+Pega os vídeos da pasta `~/Movies/Shorts-para-postar` e agenda **14 por dia** no YouTube, um por hora das 07:00 às 20:00 (horário de Brasília), 98 por semana.
 Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube publica no horário. O Mac não precisa estar ligado na hora do post.
 
 ## Como usar no dia a dia
@@ -29,10 +29,11 @@ Cada vídeo passa pelo Brier (`brier-v5` no Mangaba Router, chave `BRIER_KEY` no
 
 ## O que cada rodada faz
 - Agenda os horários vagos de hoje e de amanhã.
-- **Repõe horário perdido** (por exemplo, com o Mac desligado): o vídeo vai para uma hora livre do mesmo dia ou do dia seguinte, sem passar de 30 na semana nem de `max_por_dia` (cota da API). Primeiro usa as horas da lista `horarios` que o dia não usa e depois as de `horarios_reserva`.
+- **Repõe horário perdido** (por exemplo, com o Mac desligado): o vídeo vai para uma hora livre do mesmo dia ou do dia seguinte, sem passar da meta da semana nem de `max_por_dia`. Primeiro usa as horas da lista `horarios` que o dia não usa e depois as de `horarios_reserva`.
 - **Confere no YouTube** os agendamentos futuros e os dos últimos 3 dias: vídeo apagado, rejeitado, agendamento alterado ou vídeo que não ficou público no horário geram aviso.
 - **Recusa duplicados** pelo hash do arquivo. O duplicado vai para `rejeitados/`.
 - **Avisa no Telegram** só quando há novidade (agendou, recusou, deu erro ou problema na conferência), e uma vez por dia quando a fila tem menos de `avisar_fila_abaixo_dias` dias de vídeo.
+- **Cota da API:** se o YouTube recusar por cota, o agente guarda até quando ela vale (meia-noite no Pacífico, 05:00 em Brasília), não tenta de novo antes disso e avisa uma vez. Os melhores horários de cada dia sobem primeiro.
 - Duas rodadas nunca rodam ao mesmo tempo (trava em `.agente.lock`).
 
 ## Testes
@@ -45,7 +46,7 @@ Projetos da API do YouTube que não passaram pela auditoria do Google só conseg
 Para liberar, peça a auditoria gratuita em https://support.google.com/youtube/contact/yt_api_form ("YouTube API Services – Audit and Quota Extension"). Costuma levar de alguns dias a algumas semanas.
 
 ## Ajustes (`config.json`)
-- `posts_por_semana`: total da semana (30). A divisão por 7 dá a quantidade por dia; o que sobra vai para os dias em `dias_extra` (sábado e domingo).
-- `horarios`: lista do melhor para o pior horário. Cada dia usa os primeiros N. Limite da cota gratuita da API: 6 envios por dia. Depois de algumas semanas, confira no YouTube Studio → Análises → Público → "Quando seus espectadores estão no YouTube" e ajuste.
+- `posts_por_semana`: total da semana (98 = 14 por dia). A divisão por 7 dá a quantidade por dia; o que sobra vai para os dias em `dias_extra` (sábado e domingo).
+- `horarios`: lista do melhor para o pior horário. Cada dia usa os primeiros N. Depois de algumas semanas, confira no YouTube Studio → Análises → Público → "Quando seus espectadores estão no YouTube" e ajuste.
 - `dias_a_frente`: quantos dias à frente deixar agendado (padrão 1, para caber na cota diária).
 - `tags`, `descricao_padrao`, `conteudo_sintetico` (marque `true` se o vídeo for gerado por IA).

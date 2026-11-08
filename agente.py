@@ -199,6 +199,23 @@ def horarios_reposicao(cfg, estado, agora_utc):
 
 # ---------- vídeos ----------
 
+def fim_da_cota(agora_utc):
+    """A cota diária da API zera à meia-noite do horário do Pacífico."""
+    pt = ZoneInfo("America/Los_Angeles")
+    amanha = agora_utc.astimezone(pt).date() + timedelta(days=1)
+    return datetime(amanha.year, amanha.month, amanha.day, tzinfo=pt).astimezone(timezone.utc)
+
+
+def ordem_de_envio(plano, prioridade, tz):
+    """Dia a dia, os melhores horários sobem primeiro: se a cota acabar no meio,
+    os horários que ficam sem vídeo são os piores do dia."""
+    def chave(p):
+        local = p[0][0].astimezone(tz)
+        hhmm = local.strftime("%H:%M")
+        return (local.date(), prioridade.index(hhmm) if hhmm in prioridade else 99, p[0][0])
+    return sorted(plano, key=chave)
+
+
 def fila(pasta):
     vids = [p for p in pasta.iterdir() if p.is_file() and p.suffix.lower() in EXTS and not p.name.startswith(".")]
     return sorted(vids, key=lambda p: p.name.lower())
@@ -375,6 +392,12 @@ def cmd_run(cfg, simular=False):
     vagos = sorted([(s, False) for s in regulares] + [(s, True) for s in reposicao])
 
     agendados, pulados, erro_envio = [], [], None
+    cota_ate = estado.get("cota_esgotada_ate")
+    cota_bloqueada = bool(cota_ate) and agora < de_iso(cota_ate)
+    if cota_bloqueada:
+        log(f"Cota do YouTube esgotada até {de_iso(cota_ate).astimezone(tz):%d/%m %H:%M}; "
+            f"sem envios nesta rodada.")
+        vagos = []
     videos = fila(pasta)
     yt = None
     if vagos and videos:
@@ -453,7 +476,7 @@ def cmd_run(cfg, simular=False):
             break  # a fila acabou
 
     salvar_estado(estado) if not simular else None
-    for (slot, eh_repo), v in plano:
+    for (slot, eh_repo), v in ordem_de_envio(plano, prioridade, tz):
         video, titulo, desc, side, av = v["video"], v["titulo"], v["desc"], v["side"], v["brier"]
         quando = slot.astimezone(tz).strftime("%d/%m %H:%M") + (" (reposição)" if eh_repo else "")
         nota = f" [gancho {av['gancho']:.2f}]" if av else ""
@@ -465,7 +488,14 @@ def cmd_run(cfg, simular=False):
         except Exception as e:  # cota, rede, token
             msg = str(e)
             if "quotaExceeded" in msg or "uploadLimitExceeded" in msg:
-                erro_envio = f"Cota do YouTube atingida em {video.name}; continua na próxima rodada."
+                fim = fim_da_cota(agora)
+                estado["cota_esgotada_ate"] = iso(fim)
+                salvar_estado(estado)
+                cota_bloqueada = True
+                faltaram = len(plano) - len(agendados)
+                erro_envio = (f"Cota diária do YouTube esgotada depois de {len(agendados)} envio(s) nesta rodada; "
+                              f"{faltaram} horário(s) ficam sem vídeo. Volta a enviar às "
+                              f"{fim.astimezone(tz):%H:%M} de {fim.astimezone(tz):%d/%m}.")
             else:
                 erro_envio = f"Erro ao subir {video.name}: {msg[:300]}"
             log(erro_envio)
@@ -488,7 +518,7 @@ def cmd_run(cfg, simular=False):
 
     if brier_falhou:
         pulados.append("Brier indisponível nesta rodada: vídeos seguiram sem ranking nem hashtags")
-    sem_video = len(vagos) - len(agendados) if not erro_envio and not simular else 0
+    sem_video = len(vagos) - len(agendados) if not erro_envio and not cota_bloqueada and not simular else 0
     if vagos and not fila(pasta) and sem_video:
         log(f"Fila vazia: {sem_video} horário(s) ficaram sem vídeo.")
 
@@ -596,6 +626,8 @@ def cmd_status(cfg):
                    if a.get("reposicao") and semana_de(cfg, de_iso(a["publish_at"])) == seg)
     print(f"Horários perdidos nesta semana: {len(horarios_perdidos(cfg, estado, agora))} (repostos: {repostos})")
     print(f"Total enviado: {len(estado['agendados'])}")
+    if estado.get("cota_esgotada_ate") and agora < de_iso(estado["cota_esgotada_ate"]):
+        print(f"Cota do YouTube esgotada até {de_iso(estado['cota_esgotada_ate']).astimezone(tz):%d/%m %H:%M}")
     print("Próximos agendamentos:" if futuros else "Nenhum agendamento futuro.")
     for a in sorted(futuros, key=lambda a: a["publish_at"]):
         dt = de_iso(a["publish_at"]).astimezone(tz)

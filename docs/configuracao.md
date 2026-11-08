@@ -52,11 +52,11 @@ Isso instala um LaunchAgent que roda a cada 2 horas e quando você faz login.
 | Campo | Padrão | O que faz |
 |---|---|---|
 | `pasta_videos` | `~/Movies/Shorts-para-postar` | de onde saem os vídeos |
-| `posts_por_semana` | `30` | total da semana; a divisão por 7 dá a quantidade por dia |
+| `posts_por_semana` | `98` | total da semana; a divisão por 7 dá a quantidade por dia |
 | `dias_extra` | `["sab","dom"]` | dias que recebem a sobra da divisão |
-| `horarios` | `12:00, 19:00, 21:00, 17:00, 09:00` | do melhor para o pior; cada dia usa os primeiros N |
+| `horarios` | `12:00, 19:00, 20:00, 18:00, 17:00, 13:00, 11:00, 14:00, 16:00, 10:00, 15:00, 09:00, 08:00, 07:00` | do melhor para o pior; cada dia usa os primeiros N |
 | `horarios_reserva` | `15:00, 10:00` | usados só para repor horário perdido |
-| `max_por_dia` | `6` | teto por dia (cota gratuita da API: cerca de 6 envios por dia) |
+| `max_por_dia` | `14` | teto por dia, contando reposições |
 | `dias_a_frente` | `1` | quantos dias à frente deixar agendado |
 | `avisar_fila_abaixo_dias` | `3` | avisa quando a fila tiver menos dias que isso |
 | `brier` | ver [Brier](brier) | modelo, URL e cortes |
