@@ -64,7 +64,7 @@ Atenção: a API não informa em que horário o público está online. O ranking
 |---|------|------|---------------|
 | 4.1 | Sair do Mac | Rodar o agente como serviço systemd num servidor próprio (VPS ou Golden). A pasta é sincronizada por rsync ou por uma pasta compartilhada. | O agente roda com o Mac desligado. |
 | 4.2 | Aumentar a cota | Pedir ao Google mais cota da API (formulário de auditoria) para passar de 6 envios por dia. | Cota liberada, ou a regra continua dentro de 6 por dia. |
-| 4.3 | Outras plataformas | Mesma fila e mesmos horários para Instagram Reels e Facebook Reels (Graph API) e TikTok (Content Posting API). Usar um adaptador por plataforma. | O mesmo vídeo vai para 2 plataformas ou mais, com estado separado por plataforma. |
+| 4.3 | Outras plataformas | Feito para Instagram Reels (08/11/2026), na mesma grade e fora da grade do perfil. TikTok foi testado e removido: sem auditoria a API só posta privado. | O mesmo vídeo vai para YouTube e Instagram, com estado separado por plataforma. |
 | 4.4 | Integração com o agente de comentários | Avisar o agente de comentários de cada vídeo novo, para ele responder nas primeiras horas. | Comentários respondidos até 2 h depois da publicação. |
 | 4.5 | Relatório semanal | Mandar no Telegram: views, retenção e inscritos ganhos por vídeo, os 3 melhores e os 3 piores da semana, e quantos dias de fila restam. | Relatório toda segunda às 08:00. |
 

@@ -23,7 +23,7 @@ launchctl bootout gui/$(id -u) "$PLIST" 2>/dev/null || true
 launchctl bootstrap gui/$(id -u) "$PLIST"
 echo "Agendamento instalado: $PLIST"
 
-# Instagram e TikTok: as APIs não agendam, então publica de hora em hora, 1 min depois do horário do YouTube (07:01–20:01).
+# Instagram: a API não agenda, então publica de hora em hora, 1 min depois do horário do YouTube (07:01–20:01).
 PLIST_IG="$HOME/Library/LaunchAgents/br.mangaba.shorts-instagram.plist"
 HORAS=""
 for h in $(seq 7 20); do HORAS="$HORAS<dict><key>Hour</key><integer>$h</integer><key>Minute</key><integer>1</integer></dict>"; done

@@ -11,4 +11,3 @@ __pycache__/
 .pytest_cache/
 painel/
 .painel-publico/
-tiktok_token.json

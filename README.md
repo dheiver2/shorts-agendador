@@ -28,14 +28,13 @@ Cada rodada automática regrava o painel. A página aberta no navegador recarreg
 
 **Versão pública:** com `painel_publico_repo` no `config.json`, cada rodada também publica o painel em https://dheiver2.github.io/shorts-painel, num repositório próprio com um commit único e sem histórico. Nessa versão, vídeos que ainda não saíram aparecem só com horário e produto, e os alertas internos não aparecem.
 
-## Mesma grade nas 3 redes
-YouTube Shorts, Instagram Reels e TikTok seguem a mesma grade: 14 por dia, um por hora das 07:00 às 20:00, o mesmo vídeo na mesma hora. O YouTube agenda sozinho (`publishAt`). Instagram e TikTok não aceitam agendamento pela API, então o launchd `br.mangaba.shorts-instagram` roda `agente.py espelhos` às 07:01, 08:01 … 20:01 e publica nas duas o que acabou de sair no YouTube. Se o Mac estiver desligado, o atraso aceito é de 2 h; depois disso, o post é dado como perdido e você é avisado.
+## Mesma grade no YouTube e no Instagram
+YouTube Shorts e Instagram Reels seguem a mesma grade: 14 por dia, um por hora das 07:00 às 20:00, o mesmo vídeo na mesma hora. O YouTube agenda sozinho (`publishAt`). O Instagram não aceita agendamento pela API, então o launchd `br.mangaba.shorts-instagram` roda `agente.py espelhos` às 07:01, 08:01 … 20:01 e publica no Instagram o que acabou de sair no YouTube. Se o Mac estiver desligado, o atraso aceito é de 2 h; depois disso, o post é dado como perdido e você é avisado.
 
 ## Logins sempre ativos
 - **YouTube:** o app OAuth do Google está **em produção** (projeto winged-sol-503614-g3), então o refresh token não vence em 7 dias. Ele só cai se o acesso for revogado na conta Google.
 - **Instagram:** usa o token da Página, que não expira. A Meta corta o acesso aos dados 90 dias depois do último login no app (próximo corte: 06/02/2027). O agente avisa 14 dias antes.
-- **TikTok:** o refresh token vale 1 ano e é renovado todo dia, então o login não chega a vencer.
-- `agente.py logins` confere os três sem publicar nada. A checagem também roda sozinha uma vez por dia, na primeira rodada das 07:01, e avisa no Telegram se algum login cair.
+- `agente.py logins` confere os dois sem publicar nada. A checagem também roda sozinha uma vez por dia, na primeira rodada das 07:01, e avisa no Telegram se algum login cair.
 
 ## Instagram (Reels de teste)
 O mesmo vídeo sai também no Instagram como **Reel de teste**, na mesma hora em que vai ao ar no YouTube (14 por dia, 07:00–20:00). O Reel sai com `share_to_feed=false` (**fora da grade do perfil**, só na aba Reels) e com `trial_params` MANUAL (Reel de teste, quando a conta tiver o recurso; em 08/11/2026 a API ignorou o trial nesta conta sem dar erro). Depois de cada post o agente confere `is_shared_to_feed`: se o Reel tiver entrado na grade, ele pausa o Instagram e avisa.
@@ -46,13 +45,6 @@ O mesmo vídeo sai também no Instagram como **Reel de teste**, na mesma hora em
 - Só vale para vídeos que saem no YouTube a partir da primeira rodada com token.
 - Configuração: uma conta profissional do Instagram ligada a uma Página do Facebook e um token com `instagram_basic` e `instagram_content_publish`. Guarde o token no Keychain (`security add-generic-password -s Instagram -a INSTAGRAM_TOKEN -w 'TOKEN'`) e preencha `INSTAGRAM_KEYCHAIN_SERVICE=Instagram` e `INSTAGRAM_USER_ID` no `.env`. Sem isso, o comando não faz nada.
 - Para publicar como Reel comum, na grade, use `"instagram": {"teste": false}` no `config.json`.
-
-## TikTok (pausado)
-**Pausado desde 08/11/2026.** Sem a auditoria do TikTok a API só posta privado, e a auditoria não aceita app de uso pessoal; a decisão foi não pedir. O código fica pronto para retomar: login (`tiktok-auth`, Sandbox), envio automático e a tela de aprovação por post (`agente.py tiktok-app`, http://127.0.0.1:8770) no padrão exigido pelo TikTok. Para religar: `"tiktok": {"ativo": true}` no `config.json`.
-
-- Publica pelo Content Posting API (Direct Post), com a mesma legenda do Instagram. Vídeo marcado como IA se `conteudo_sintetico` for `true`.
-- **Enquanto o app não passar pela auditoria do TikTok, os posts saem privados (só você vê)** e a conta precisa estar privada. O agente pede `PUBLIC_TO_EVERYONE` e, se o TikTok não oferecer, usa `SELF_ONLY` e avisa no Telegram.
-- Configuração: crie um app em developers.tiktok.com com **Login Kit** e **Content Posting API** (Direct Post ligado), escopos `user.info.basic` e `video.publish`, e o redirect `https://dheiver2.github.io/shorts-agendador/tiktok/`. Coloque `TIKTOK_CLIENT_KEY` no `.env`, o segredo no Keychain (`security add-generic-password -s TikTok -a TIKTOK_CLIENT_SECRET -w 'SEGREDO'` e `TIKTOK_KEYCHAIN_SERVICE=TikTok` no `.env`) e rode `.venv/bin/python agente.py tiktok-auth`. O token renova sozinho (o login vale 1 ano).
 
 ## Brier (decisões com probabilidade)
 Cada vídeo passa pelo Brier (`brier-v5` no Mangaba Router, chave `BRIER_KEY` no `.env`), numa só chamada com 16 perguntas:

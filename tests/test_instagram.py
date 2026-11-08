@@ -96,88 +96,6 @@ def test_publicar_reel_erro_de_processamento(tmp_path):
         raise AssertionError("devia falhar")
 
 
-# ---------- TikTok ----------
-import tiktok  # noqa: E402
-
-
-def test_tiktok_pedacos():
-    assert tiktok.pedacos(30 * tiktok.MB) == (30 * tiktok.MB, 1, [(0, 30 * tiktok.MB - 1)])
-    tam, total, faixas = tiktok.pedacos(75 * tiktok.MB)
-    assert tam == 10 * tiktok.MB and total == 7
-    assert faixas[-1] == (60 * tiktok.MB, 75 * tiktok.MB - 1)  # o último absorve o resto
-    assert sum(b - a + 1 for a, b in faixas) == 75 * tiktok.MB
-
-
-def fake_tiktok(opcoes, chamadas, status=("PROCESSING_UPLOAD", "PUBLISH_COMPLETE")):
-    st = iter(status)
-
-    def chamar(url, json_corpo=None, form=None, token=None, metodo=None, corpo=None, cabecalhos=None, timeout=60):
-        chamadas.append((url, json_corpo, corpo, cabecalhos))
-        ok = {"error": {"code": "ok"}}
-        if url.endswith("creator_info/query/"):
-            return {**ok, "data": {"privacy_level_options": opcoes}}
-        if url.endswith("video/init/"):
-            return {**ok, "data": {"publish_id": "P1", "upload_url": "https://up/x"}}
-        if url.endswith("status/fetch/"):
-            s = next(st)
-            return {**ok, "data": {"status": s, "publicaly_available_post_id": [123] if s == "PUBLISH_COMPLETE" else []}}
-        return {}
-    return chamar
-
-
-def test_tiktok_publica_publico_quando_permitido(tmp_path):
-    v = tmp_path / "v.mp4"
-    v.write_bytes(b"12345")
-    cham = []
-    r = tiktok.publicar("TK", v, "leg", chamar=fake_tiktok(["PUBLIC_TO_EVERYONE", "SELF_ONLY"], cham),
-                        dormir=lambda s: None)
-    assert r == {"publish_id": "P1", "privacidade": "PUBLIC_TO_EVERYONE", "post_id": "123"}
-    init = cham[1][1]
-    assert init["source_info"] == {"source": "FILE_UPLOAD", "video_size": 5, "chunk_size": 5, "total_chunk_count": 1}
-    assert cham[2][0] == "https://up/x" and cham[2][2] == b"12345" and cham[2][3]["Content-Range"] == "bytes 0-4/5"
-
-
-def test_tiktok_sem_auditoria_cai_para_privado(tmp_path):
-    v = tmp_path / "v.mp4"
-    v.write_bytes(b"1")
-    cham = []
-    r = tiktok.publicar("TK", v, "leg", chamar=fake_tiktok(["SELF_ONLY"], cham), dormir=lambda s: None)
-    assert r["privacidade"] == "SELF_ONLY" and cham[1][1]["post_info"]["privacy_level"] == "SELF_ONLY"
-
-
-def test_tiktok_falha_mostra_motivo(tmp_path):
-    v = tmp_path / "v.mp4"
-    v.write_bytes(b"1")
-    try:
-        tiktok.publicar("TK", v, "l", chamar=fake_tiktok(["SELF_ONLY"], [], status=("FAILED",)), dormir=lambda s: None)
-    except RuntimeError as e:
-        assert "não publicou" in str(e)
-    else:
-        raise AssertionError("devia falhar")
-
-
-def test_tiktok_renova_token_perto_de_vencer():
-    tok = {"access_token": "A", "refresh_token": "R", "expira_em": 1000 + 600, "refresh_expira_em": 10**9}
-    vistos = []
-
-    def chamar(url, form=None, **kw):
-        vistos.append(form)
-        return {"access_token": "B", "refresh_token": "R2", "expires_in": 86400, "refresh_expires_in": 100}
-    novo, mudou = tiktok.token_valido(tok, "K", "S", chamar=chamar, agora=1000)
-    assert mudou and novo["access_token"] == "B" and vistos[0]["grant_type"] == "refresh_token"
-    assert tiktok.token_valido(novo, "K", "S", chamar=chamar, agora=1000) == (novo, False)
-
-
-def test_tiktok_login_vencido_pede_auth():
-    tok = {"access_token": "A", "refresh_token": "R", "expira_em": 0, "refresh_expira_em": 5}
-    try:
-        tiktok.token_valido(tok, "K", "S", agora=10)
-    except RuntimeError as e:
-        assert "tiktok-auth" in str(e)
-    else:
-        raise AssertionError("devia falhar")
-
-
 def test_instagram_checar_login():
     def chamar(url):
         return {"data": {"is_valid": True, "data_access_expires_at": 99}} if "debug_token" in url else {"username": "x"}
@@ -186,31 +104,13 @@ def test_instagram_checar_login():
 
 def test_logins_avisa_instagram_perto_de_vencer(monkeypatch):
     import time as _t
-    cfg = {"fuso": "America/Sao_Paulo", "instagram": {"ativo": True}, "tiktok": {"ativo": False}}
+    cfg = {"fuso": "America/Sao_Paulo", "instagram": {"ativo": True}}
     monkeypatch.setattr(agente, "conectar", lambda: (None, "O login do YouTube expirou."))
     monkeypatch.setattr(agente, "carregar_env", lambda: {"INSTAGRAM_TOKEN": "T", "INSTAGRAM_USER_ID": "1"})
-    monkeypatch.setattr(agente, "tiktok_credenciais", lambda: (None, None))
     monkeypatch.setattr(agente.instagram, "checar_login", lambda t, u: ("x", _t.time() + 5 * 86400))
     ok, prob = agente.checar_logins(cfg)
     assert ok == [] and len(prob) == 2
     assert prob[0].startswith("YouTube") and "vence em" in prob[1]
-
-
-def test_tiktok_sem_auditoria_recusa_publico_e_repete_privado(tmp_path):
-    v = tmp_path / "v.mp4"
-    v.write_bytes(b"1")
-    cham = []
-    base = fake_tiktok(["PUBLIC_TO_EVERYONE", "SELF_ONLY"], cham)
-    tentativas = []
-
-    def chamar(url, json_corpo=None, **kw):
-        if url.endswith("video/init/"):
-            tentativas.append(json_corpo["post_info"]["privacy_level"])
-            if len(tentativas) == 1:
-                return {"error": {"code": "unaudited_client_can_only_post_to_private_accounts", "message": "x"}}
-        return base(url, json_corpo=json_corpo, **kw)
-    r = tiktok.publicar("TK", v, "l", chamar=chamar, dormir=lambda s: None)
-    assert tentativas == ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] and r["privacidade"] == "SELF_ONLY"
 
 
 def test_publicar_reel_repete_upload_recusado_logo_apos_criar(tmp_path):
@@ -236,31 +136,3 @@ def test_publicar_reel_repete_upload_recusado_logo_apos_criar(tmp_path):
 def test_na_grade():
     assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": True}) is True
     assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": False}) is False
-
-
-INFO = {"privacy_level_options": ["PUBLIC_TO_EVERYONE", "SELF_ONLY"], "comment_disabled": False,
-        "duet_disabled": True, "stitch_disabled": False}
-
-
-def test_tiktok_post_info_exige_privacidade_escolhida():
-    import pytest
-    with pytest.raises(ValueError):
-        tiktok.montar_post_info({"titulo": "x"}, INFO)
-
-
-def test_tiktok_post_info_interacoes_desligadas_por_padrao_e_respeita_conta():
-    p = tiktok.montar_post_info({"titulo": "x", "privacidade": "SELF_ONLY", "duet": True}, INFO)
-    assert p["disable_comment"] and p["disable_stitch"] and p["disable_duet"]  # duet bloqueado na conta
-    assert not p["brand_content_toggle"] and not p["brand_organic_toggle"]
-
-
-def test_tiktok_post_info_conteudo_de_marca():
-    import pytest
-    with pytest.raises(ValueError):  # divulgação ligada sem dizer qual
-        tiktok.montar_post_info({"titulo": "x", "privacidade": "PUBLIC_TO_EVERYONE", "comercial": {"ativo": True}}, INFO)
-    with pytest.raises(ValueError):  # conteúdo de marca não pode ser privado
-        tiktok.montar_post_info({"titulo": "x", "privacidade": "SELF_ONLY",
-                                 "comercial": {"ativo": True, "conteudo_marca": True}}, INFO)
-    p = tiktok.montar_post_info({"titulo": "x", "privacidade": "PUBLIC_TO_EVERYONE", "comentar": True,
-                                 "comercial": {"ativo": True, "sua_marca": True}}, INFO)
-    assert p["brand_organic_toggle"] and not p["brand_content_toggle"] and not p["disable_comment"]

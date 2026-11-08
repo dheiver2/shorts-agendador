@@ -13,10 +13,8 @@ Uso:
   agente.py avaliar         # passa a fila inteira pelo Brier e mostra o ranking
   agente.py teste-aviso     # manda uma mensagem de teste no Telegram
   agente.py painel          # atualiza as métricas e abre o painel de desempenho
-  agente.py espelhos        # repete no Instagram (Reel de teste) e no TikTok o que já saiu no YouTube (de hora em hora)
-  agente.py tiktok-auth     # login no TikTok (uma vez)
-  agente.py tiktok-app      # tela local para aprovar cada post no TikTok (http://127.0.0.1:8770)
-  agente.py logins          # confere os logins de YouTube, Instagram e TikTok (também roda 1x por dia)
+  agente.py espelhos        # repete no Instagram (Reel fora da grade) o que já saiu no YouTube (de hora em hora)
+  agente.py logins          # confere os logins de YouTube e Instagram (também roda 1x por dia)
 """
 import fcntl
 import hashlib
@@ -35,7 +33,6 @@ from zoneinfo import ZoneInfo
 
 import brier
 import instagram
-import tiktok
 import painel
 
 BASE = Path(__file__).resolve().parent
@@ -46,7 +43,6 @@ CLIENT_SECRET = BASE / "client_secret.json"
 ENV = BASE / ".env"
 LOG = BASE / "agente.log"
 LOCK = BASE / ".agente.lock"
-TIKTOK_TOKEN = BASE / "tiktok_token.json"
 PAINEL = BASE / "painel" / "index.html"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
           "https://www.googleapis.com/auth/youtube.readonly"]
@@ -671,7 +667,7 @@ def cmd_run(cfg, simular=False):
 
 def espelhar(cfg, chave, nome, cab, conf, publicar_um):
     """Repete na rede `chave` cada vídeo cujo horário no YouTube já chegou (mesma grade:
-    14 por dia, 07–20h). As APIs do Instagram e do TikTok não agendam, então isto roda
+    14 por dia, 07–20h). A API do Instagram não agenda, então isto roda
     de hora em hora. `publicar_um(video, legenda)` devolve (registro, observação)."""
     tz = ZoneInfo(cfg["fuso"])
     postados = Path(cfg["pasta_videos"]).expanduser() / "postados"
@@ -747,86 +743,9 @@ def cmd_instagram(cfg):
     espelhar(cfg, "instagram", "Instagram", f"📸 Instagram ({modo})", ig, um)
 
 
-def tiktok_credenciais():
-    env = carregar_env()
-    chave = env.get("TIKTOK_CLIENT_KEY")
-    segredo = env.get("TIKTOK_CLIENT_SECRET")
-    if not segredo and env.get("TIKTOK_KEYCHAIN_SERVICE"):
-        r = subprocess.run(["security", "find-generic-password", "-w", "-s", env["TIKTOK_KEYCHAIN_SERVICE"],
-                            "-a", "TIKTOK_CLIENT_SECRET"], capture_output=True, text=True)
-        segredo = r.stdout.strip() if r.returncode == 0 else None
-    return chave, segredo
-
-
-def cmd_tiktok(cfg):
-    """Post no TikTok na hora em que o vídeo sai no YouTube. Sem login, não faz nada."""
-    tk = cfg["tiktok"]
-    chave, segredo = tiktok_credenciais()
-    tok = carregar(TIKTOK_TOKEN, None)
-    if not tk["ativo"] or not chave or not segredo or not tok:
-        log("TikTok: desligado, sem TIKTOK_CLIENT_KEY/segredo ou sem login (agente.py tiktok-auth); nada a fazer.")
-        return
-    try:
-        tok, mudou = tiktok.token_valido(tok, chave, segredo)
-    except Exception as e:
-        hoje = datetime.now(ZoneInfo(cfg["fuso"])).date().isoformat()
-        estado = carregar(ESTADO, {"agendados": []})
-        if estado.get("aviso_tiktok_login_em") != hoje:
-            estado["aviso_tiktok_login_em"] = hoje
-            salvar_estado(estado)
-            avisar(f"🎵 TikTok: {e}")
-        log(f"TikTok: {e}")
-        return
-    if mudou:
-        TIKTOK_TOKEN.write_text(json.dumps(tok))
-        TIKTOK_TOKEN.chmod(0o600)
-
-    if tk["modo"] == "aprovacao":
-        # o TikTok exige que cada post seja aprovado numa tela (prévia, privacidade escolhida na mão,
-        # consentimento). Aqui só avisamos que há vídeo esperando; o envio sai pela tela local.
-        import tiktok_app
-        estado = carregar(ESTADO, {"agendados": []})
-        if "tiktok_desde" not in estado:
-            estado["tiktok_desde"] = iso(datetime.now(timezone.utc))
-        novos = [p for p in tiktok_app.pendentes(cfg, estado, datetime.now(timezone.utc))
-                 if p["arquivo"] not in estado.setdefault("tiktok_avisados", [])]
-        if novos:
-            estado["tiktok_avisados"] = (estado["tiktok_avisados"] + [p["arquivo"] for p in novos])[-500:]
-            salvar_estado(estado)
-            avisar("🎵 TikTok: vídeo pronto para aprovar\n" + "\n".join(f"• {p['legenda'].splitlines()[0]}" for p in novos)
-                   + f"\n\nAbra no Mac: http://127.0.0.1:{tiktok_app.PORTA}")
-        else:
-            salvar_estado(estado)
-        return
-
-    def um(video, texto):
-        r = tiktok.publicar(tok["access_token"], video, texto, privacidade=tk["privacidade"],
-                            ia=cfg.get("conteudo_sintetico", False))
-        obs = "privado: o app ainda não passou na auditoria do TikTok" if r["privacidade"] != tk["privacidade"] else None
-        return r, obs
-
-    espelhar(cfg, "tiktok", "TikTok", "🎵 TikTok", tk, um)
-
-
-def cmd_tiktok_auth(cfg):
-    chave, segredo = tiktok_credenciais()
-    if not chave or not segredo:
-        raise SystemExit("Falta TIKTOK_CLIENT_KEY no .env e o segredo (TIKTOK_CLIENT_SECRET ou Keychain).")
-    redirect = cfg["tiktok"]["redirect_uri"]
-    url = tiktok.url_login(chave, redirect)
-    print("Abrindo o login do TikTok. Se não abrir, use:\n" + url)
-    subprocess.run(["open", url])
-    codigo = input("Cole aqui o código que aparece na página depois de autorizar: ")
-    tok = tiktok.trocar_codigo(chave, segredo, urllib.parse.unquote(codigo), redirect)
-    TIKTOK_TOKEN.write_text(json.dumps(tok))
-    TIKTOK_TOKEN.chmod(0o600)
-    print("Login do TikTok OK.")
-
-
 def checar_logins(cfg):
-    """Testa os três logins sem publicar nada. Devolve (ok, problemas) em texto.
-    YouTube renova o acesso pelo refresh token, o token da Página do Instagram não expira
-    e o do TikTok é renovado aqui mesmo (o refresh vale 1 ano e é trocado a cada renovação)."""
+    """Testa os logins sem publicar nada. Devolve (ok, problemas) em texto.
+    YouTube renova o acesso pelo refresh token, o token da Página do Instagram não expira."""
     ok, problemas = [], []
     yt, erro = conectar()
     if erro:
@@ -851,17 +770,6 @@ def checar_logins(cfg):
         except Exception as e:
             problemas.append("Instagram: o login caiu (senha trocada ou acesso do app removido). "
                              f"Gere um token novo no Explorador da Graph API. Detalhe: {str(e)[:150]}")
-    chave, segredo = tiktok_credenciais()
-    tok = carregar(TIKTOK_TOKEN, None)
-    if cfg["tiktok"]["ativo"] and chave and segredo and tok:
-        try:
-            # renova já, mesmo longe de vencer: mantém o refresh de 1 ano sempre novo
-            tok, _ = tiktok.token_valido({**tok, "expira_em": 0}, chave, segredo)
-            TIKTOK_TOKEN.write_text(json.dumps(tok))
-            TIKTOK_TOKEN.chmod(0o600)
-            ok.append("TikTok: login renovado")
-        except Exception as e:
-            problemas.append(f"TikTok: {str(e)[:200]}")
     return ok, problemas
 
 
@@ -886,7 +794,7 @@ def cmd_logins(cfg, so_uma_vez_por_dia=False):
 
 
 def cmd_espelhos(cfg):
-    for fn in (lambda c: cmd_logins(c, so_uma_vez_por_dia=True), cmd_instagram, cmd_tiktok):
+    for fn in (lambda c: cmd_logins(c, so_uma_vez_por_dia=True), cmd_instagram):
         try:
             fn(cfg)
         except Exception as e:  # uma rede com problema não segura a outra
@@ -976,9 +884,6 @@ def main():
                     **cfg.get("brier", {})}
     cfg["instagram"] = {"ativo": True, "teste": True, "max_atraso_h": 2,
                         **cfg.get("instagram", {})}
-    cfg["tiktok"] = {"ativo": True, "modo": "aprovacao", "privacidade": "PUBLIC_TO_EVERYONE", "max_atraso_h": 2,
-                     "redirect_uri": "https://dheiver2.github.io/shorts-agendador/tiktok/",
-                     **cfg.get("tiktok", {})}
     if args[0] == "auth":
         credenciais(interativo=True)
         canal = youtube().channels().list(part="snippet", mine=True).execute()["items"][0]["snippet"]["title"]
@@ -1005,8 +910,8 @@ def main():
         print(f"Painel: {destino}")
         if "--nao-abrir" not in args:
             subprocess.run(["open", str(destino)])
-    elif args[0] in ("instagram", "tiktok", "espelhos"):
-        fn = {"instagram": cmd_instagram, "tiktok": cmd_tiktok, "espelhos": cmd_espelhos}[args[0]]
+    elif args[0] in ("instagram", "espelhos"):
+        fn = {"instagram": cmd_instagram, "espelhos": cmd_espelhos}[args[0]]
         with LOCK.open("w") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)  # não disputa o estado.json com a rodada do YouTube
             fn(cfg)
@@ -1014,11 +919,6 @@ def main():
         with LOCK.open("w") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)
             cmd_logins(cfg)
-    elif args[0] == "tiktok-app":
-        import tiktok_app
-        tiktok_app.servir(cfg)
-    elif args[0] == "tiktok-auth":
-        cmd_tiktok_auth(cfg)
     elif args[0] == "teste-aviso":
         print("Enviado." if avisar("✅ Teste do agendador de Shorts.") else "Não enviado (veja o .env).")
     else:
