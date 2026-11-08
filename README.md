@@ -38,7 +38,7 @@ YouTube Shorts, Instagram Reels e TikTok seguem a mesma grade: 14 por dia, um po
 - `agente.py logins` confere os três sem publicar nada. A checagem também roda sozinha uma vez por dia, na primeira rodada das 07:01, e avisa no Telegram se algum login cair.
 
 ## Instagram (Reels de teste)
-O mesmo vídeo sai também no Instagram como **Reel de teste**, na mesma hora em que vai ao ar no YouTube (14 por dia, 07:00–20:00). O Reel de teste é mostrado primeiro para quem não segue a conta e **não entra na grade do perfil**. Ele só vai para a grade se você promover pelo app (`graduation_strategy` MANUAL).
+O mesmo vídeo sai também no Instagram como **Reel de teste**, na mesma hora em que vai ao ar no YouTube (14 por dia, 07:00–20:00). O Reel sai com `share_to_feed=false` (**fora da grade do perfil**, só na aba Reels) e com `trial_params` MANUAL (Reel de teste, quando a conta tiver o recurso; em 08/11/2026 a API ignorou o trial nesta conta sem dar erro). Depois de cada post o agente confere `is_shared_to_feed`: se o Reel tiver entrado na grade, ele pausa o Instagram e avisa.
 
 - A API do Instagram não agenda, então um segundo launchd (`br.mangaba.shorts-instagram`) roda `agente.py instagram` às 07:01, 08:01 … 20:01 e publica o que acabou de sair no YouTube.
 - Legenda: título e descrição do YouTube, com as hashtags do Brier, sem o `#Shorts`.

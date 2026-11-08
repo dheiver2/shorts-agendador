@@ -53,7 +53,9 @@ def test_publicar_reel_em_modo_teste(tmp_path):
     criar = chamadas[0][1]
     assert criar["media_type"] == "REELS" and criar["upload_type"] == "resumable"
     assert json.loads(criar["trial_params"]) == {"graduation_strategy": "MANUAL"}
+    assert criar["share_to_feed"] == "false"
     assert chamadas[1][0].endswith("/C1") and chamadas[1][2]["file_size"] == "3" and chamadas[1][3] == b"abc"
+    assert chamadas[1][2]["Content-Type"] == "application/octet-stream"
     assert chamadas[-1][1]["creation_id"] == "C1"
 
 
@@ -208,3 +210,28 @@ def test_tiktok_sem_auditoria_recusa_publico_e_repete_privado(tmp_path):
         return base(url, json_corpo=json_corpo, **kw)
     r = tiktok.publicar("TK", v, "l", chamar=chamar, dormir=lambda s: None)
     assert tentativas == ["PUBLIC_TO_EVERYONE", "SELF_ONLY"] and r["privacidade"] == "SELF_ONLY"
+
+
+def test_publicar_reel_repete_upload_recusado_logo_apos_criar(tmp_path):
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"a")
+    uploads = []
+
+    def chamar(url, dados=None, cabecalhos=None, metodo=None, corpo=None, timeout=60):
+        if url.endswith("/media"):
+            return {"id": "C", "uri": "https://rupload/x/C"}
+        if "rupload" in url:
+            uploads.append(1)
+            if len(uploads) == 1:
+                raise RuntimeError('Instagram HTTP 400: {"type":"ProcessingFailedError"}')
+            return {"success": True}
+        if "fields=" in url:
+            return {"status_code": "FINISHED"}
+        return {"id": "P"}
+    assert instagram.publicar_reel("T", "I", video, "l", chamar=chamar, dormir=lambda s: None) == "P"
+    assert len(uploads) == 2
+
+
+def test_na_grade():
+    assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": True}) is True
+    assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": False}) is False

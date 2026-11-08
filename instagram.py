@@ -68,11 +68,27 @@ def publicar_reel(token, ig_user, video, texto, teste=True, espera_max_s=600, ch
     params = {"media_type": "REELS", "upload_type": "resumable", "caption": texto, "access_token": token}
     if teste:
         params["trial_params"] = json.dumps({"graduation_strategy": "MANUAL"})
-    container = chamar(f"{GRAPH}/{ig_user}/media", dados=params)["id"]
+        # o trial_params pode ser ignorado sem erro (conta sem Reels de teste liberado);
+        # share_to_feed=false é o que de fato tira o Reel da grade do perfil
+        params["share_to_feed"] = "false"
+    criado = chamar(f"{GRAPH}/{ig_user}/media", dados=params)
+    container = criado["id"]
 
     tamanho = video.stat().st_size
-    up = chamar(f"{RUPLOAD}/{container}", corpo=video.read_bytes(), metodo="POST", timeout=600,
-                cabecalhos={"Authorization": f"OAuth {token}", "offset": "0", "file_size": str(tamanho)})
+    # o rupload costuma recusar (ProcessingFailedError) o envio feito logo após criar o container;
+    # alguns segundos depois o mesmo envio passa
+    destino = criado.get("uri") or f"{RUPLOAD}/{container}"
+    cab = {"Authorization": f"OAuth {token}", "offset": "0", "file_size": str(tamanho),
+           "Content-Type": "application/octet-stream"}
+    dados = video.read_bytes()
+    for tentativa in range(4):
+        dormir(5)
+        try:
+            up = chamar(destino, corpo=dados, metodo="POST", timeout=600, cabecalhos=cab)
+            break
+        except RuntimeError as e:
+            if "ProcessingFailedError" not in str(e) or tentativa == 3:
+                raise
     if not up.get("success", True):
         raise RuntimeError(f"Upload do vídeo recusado: {up}")
 
@@ -104,3 +120,9 @@ def checar_login(token, ig_user, chamar=_req):
     if dados and not dados.get("is_valid", True):
         raise RuntimeError("token inválido")
     return nome, dados.get("data_access_expires_at") or None
+
+
+def na_grade(token, media_id, chamar=_req):
+    """True se o Reel publicado está na grade do perfil (is_shared_to_feed)."""
+    q = urllib.parse.urlencode({"fields": "is_shared_to_feed", "access_token": token})
+    return bool(chamar(f"{GRAPH}/{media_id}?{q}").get("is_shared_to_feed"))

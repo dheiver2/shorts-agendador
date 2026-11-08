@@ -732,8 +732,15 @@ def cmd_instagram(cfg):
         return
 
     def um(video, texto):
-        return {"id": instagram.publicar_reel(token, ig_user, video, texto, teste=ig["teste"]),
-                "teste": ig["teste"]}, None
+        post = instagram.publicar_reel(token, ig_user, video, texto, teste=ig["teste"])
+        if ig["teste"] and instagram.na_grade(token, post):
+            # trava de segurança: o combinado é nunca aparecer na grade principal
+            cfg_disco = carregar(CONFIG, {})
+            cfg_disco["instagram"] = {**cfg_disco.get("instagram", {}), "ativo": False}
+            CONFIG.write_text(json.dumps(cfg_disco, indent=2, ensure_ascii=False))
+            raise RuntimeError(f"o Reel {post} entrou na grade do perfil. Instagram pausado; "
+                               "tire o Reel da grade pelo app (Gerenciar post → Remover da grade do perfil)")
+        return {"id": post, "teste": ig["teste"]}, None
 
     modo = "Reels de teste, fora da grade" if ig["teste"] else "Reels"
     espelhar(cfg, "instagram", "Instagram", f"📸 Instagram ({modo})", ig, um)
