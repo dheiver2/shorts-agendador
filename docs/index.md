@@ -17,7 +17,7 @@ Coloque os vídeos numa pasta. O agente agenda **30 Shorts por semana** no YouTu
 ## Como funciona
 
 ```mermaid
-flowchart LR
+flowchart TD
   P["📁 Pasta<br/>Shorts-para-postar"] -->|"vídeos .mp4 + .txt"| V["🔎 Validação<br/>vertical, até 3 min,<br/>sem duplicado"]
   V -->|"título e descrição"| B["🎯 Brier<br/>brier-v5"]
   B -->|"gancho → horário do dia<br/>+ hashtags"| Y["▶️ YouTube<br/>privado + publishAt"]
