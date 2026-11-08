@@ -1,6 +1,6 @@
 # Agendador de Shorts
 
-**Documentação:** https://dheiver2.github.io/shorts-agendador · **Plano:** [docs/plano.md](docs/plano.md)
+**Documentação:** https://dheiver2.github.io/shorts-agendador · **Painel:** https://dheiver2.github.io/shorts-painel · **Plano:** [docs/plano.md](docs/plano.md)
 
 Pega os vídeos da pasta `~/Movies/Shorts-para-postar` e agenda **14 por dia** no YouTube, um por hora das 07:00 às 20:00 (horário de Brasília), 98 por semana.
 Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube publica no horário. O Mac não precisa estar ligado na hora do post.
@@ -25,6 +25,8 @@ Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube pub
 - tabelas dos vídeos publicados e dos próximos agendamentos.
 
 Cada rodada automática regrava o painel. A página aberta no navegador recarrega sozinha a cada 10 min.
+
+**Versão pública:** com `painel_publico_repo` no `config.json`, cada rodada também publica o painel em https://dheiver2.github.io/shorts-painel, num repositório próprio com um commit único e sem histórico. Nessa versão, vídeos que ainda não saíram aparecem só com horário e produto, e os alertas internos não aparecem.
 
 ## Brier (decisões com probabilidade)
 Cada vídeo passa pelo Brier (`brier-v5` no Mangaba Router, chave `BRIER_KEY` no `.env`), numa só chamada com 16 perguntas:

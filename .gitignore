@@ -10,3 +10,4 @@ __pycache__/
 .agente.lock
 .pytest_cache/
 painel/
+.painel-publico/

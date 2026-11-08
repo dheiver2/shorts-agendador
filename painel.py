@@ -17,19 +17,20 @@ def produto(titulo):
     return partes[-1].strip() if len(partes) > 1 else "Outros"
 
 
-def dados(cfg, estado, fila_n, fila_dias, agora_utc):
+def dados(cfg, estado, fila_n, fila_dias, agora_utc, publico=False):
     tz = ZoneInfo(cfg["fuso"])
     videos = []
     for a in estado["agendados"]:
         pub = datetime.strptime(a["publish_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=ZoneInfo("UTC"))
         m = a.get("metricas") or {}
         local = pub.astimezone(tz)
+        oculto = publico and pub > agora_utc  # na versão pública, o título só aparece quando o vídeo sai
         videos.append({
-            "id": a["video_id"], "titulo": a["titulo"].replace(" #Shorts", "").split("|")[0].strip(), "produto": produto(a["titulo"]),
+            "id": "" if oculto else a["video_id"], "titulo": "Vídeo agendado" if oculto else a["titulo"].replace(" #Shorts", "").split("|")[0].strip(), "produto": produto(a["titulo"]),
             "quando": local.strftime("%d/%m %H:%M"), "ordem": a["publish_at"], "hora": local.hour,
             "publicado": pub <= agora_utc, "views": m.get("views"), "likes": m.get("likes"),
             "comentarios": m.get("comentarios"), "gancho": (a.get("brier") or {}).get("gancho"),
-            "alerta": a.get("alerta"),
+            "alerta": None if publico else a.get("alerta"),
         })
     serie = [{"x": datetime.strptime(p["em"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=ZoneInfo("UTC"))
               .astimezone(tz).strftime("%Y-%m-%dT%H:%M:%S"), "y": p["views"]} for p in estado.get("serie", [])]
@@ -40,10 +41,10 @@ def dados(cfg, estado, fila_n, fila_dias, agora_utc):
     }
 
 
-def gerar(cfg, estado, fila_n, fila_dias, agora_utc, destino):
+def gerar(cfg, estado, fila_n, fila_dias, agora_utc, destino, publico=False):
     destino = Path(destino)
-    destino.parent.mkdir(exist_ok=True)
-    js = json.dumps(dados(cfg, estado, fila_n, fila_dias, agora_utc), ensure_ascii=False).replace("</", "<\\/")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    js = json.dumps(dados(cfg, estado, fila_n, fila_dias, agora_utc, publico), ensure_ascii=False).replace("</", "<\\/")
     destino.write_text(MODELO.replace("__DADOS__", js).replace("__CANAL__", html.escape(cfg.get("canal", ""))),
                        encoding="utf-8")
     return destino
@@ -231,3 +232,23 @@ document.getElementById("l-prox").innerHTML = prox.map(v => `<div class="list-gr
 </body>
 </html>
 """
+
+
+def publicar(cfg, estado, fila_n, fila_dias, agora_utc, pasta_git, repo):
+    """Gera a versão pública e manda para o GitHub Pages como um commit único (sem histórico)."""
+    import subprocess
+    pasta_git = Path(pasta_git)
+    gerar(cfg, estado, fila_n, fila_dias, agora_utc, pasta_git / "index.html", publico=True)
+    (pasta_git / ".nojekyll").touch()
+    git = lambda *a: subprocess.run(["git", "-C", str(pasta_git), *a], check=True, capture_output=True, text=True)
+    if not (pasta_git / ".git").exists():
+        git("init", "-q")
+        git("remote", "add", "origin", f"https://github.com/{repo}.git")
+    git("checkout", "-q", "--orphan", "publicar")
+    git("add", "-A")
+    git("-c", "user.name=shorts-agendador", "-c", "user.email=shorts-agendador@users.noreply.github.com",
+        "commit", "-q", "-m", "Painel atualizado")
+    subprocess.run(["git", "-C", str(pasta_git), "branch", "-D", "main"], capture_output=True)
+    git("branch", "-m", "main")
+    git("push", "-q", "-f", "origin", "main")
+    return f"https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/"

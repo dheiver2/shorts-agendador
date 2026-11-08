@@ -403,7 +403,15 @@ def atualizar_painel(cfg, estado, yt=None):
             log(f"Não consegui coletar métricas: {str(e)[:200]}")
     pasta = Path(cfg["pasta_videos"]).expanduser()
     n = len(fila(pasta)) if pasta.is_dir() else 0
-    return painel.gerar(cfg, estado, n, dias_de_fila(cfg, n), agora, PAINEL)
+    destino = painel.gerar(cfg, estado, n, dias_de_fila(cfg, n), agora, PAINEL)
+    repo = cfg.get("painel_publico_repo")
+    if repo and yt is not None:
+        try:
+            url = painel.publicar(cfg, estado, n, dias_de_fila(cfg, n), agora, BASE / ".painel-publico", repo)
+            log(f"Painel publicado: {url}")
+        except Exception as e:
+            log(f"Não consegui publicar o painel: {str(getattr(e, 'stderr', '') or e)[:200]}")
+    return destino
 
 
 # ---------- comandos ----------

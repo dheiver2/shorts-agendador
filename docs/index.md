@@ -10,6 +10,7 @@ Coloque os vídeos numa pasta. O agente agenda **14 Shorts por dia** no YouTube,
 {: .fs-6 .fw-300 }
 
 [Configurar em 4 passos](configuracao){: .btn .btn-primary .mr-2 }
+[Painel de desempenho](https://dheiver2.github.io/shorts-painel){: .btn .mr-2 }
 [Ver o código](https://github.com/dheiver2/shorts-agendador){: .btn }
 
 ---
