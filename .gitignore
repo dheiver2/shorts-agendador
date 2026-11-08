@@ -1,0 +1,8 @@
+client_secret.json
+token.json
+estado.json
+*.log
+.venv/
+launchd.log
+*.tmp
+__pycache__/

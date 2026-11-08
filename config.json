@@ -1,0 +1,23 @@
+{
+  "pasta_videos": "~/Movies/Shorts-para-postar",
+  "posts_por_semana": 30,
+  "horarios": [
+    "12:00",
+    "19:00",
+    "21:00",
+    "17:00",
+    "09:00"
+  ],
+  "dias_extra": [
+    "sab",
+    "dom"
+  ],
+  "fuso": "America/Sao_Paulo",
+  "dias_a_frente": 1,
+  "duracao_max_seg": 180,
+  "descricao_padrao": "",
+  "tags": [],
+  "categoria_id": "22",
+  "feito_para_criancas": false,
+  "conteudo_sintetico": false
+}
