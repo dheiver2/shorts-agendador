@@ -197,21 +197,26 @@ if (prods.length) new ApexCharts(document.getElementById("g-produto"), {{ ...bas
   series: [{{ name: "Views", data: prods.map(p => p[1]) }}], xaxis: {{ categories: prods.map(p => p[0]) }} }}).render();
 else vazio("g-produto", "Sem vídeos publicados ainda.");
 
-const horas = [...new Set(D.videos.map(v => v.hora))].sort((a, b) => a - b);
+const horas = [...new Set(pub.map(v => v.hora))].sort((a, b) => a - b);
 const media = horas.map(h => {{ const vs = pub.filter(v => v.hora === h && v.views != null);
   return vs.length ? +(vs.reduce((s, v) => s + v.views, 0) / vs.length).toFixed(1) : 0; }});
 const qtd = horas.map(h => pub.filter(v => v.hora === h).length);
-new ApexCharts(document.getElementById("g-hora"), {{ ...base,
+if (horas.length) new ApexCharts(document.getElementById("g-hora"), {{ ...base,
   chart: {{ ...base.chart, type: "bar", height: 260 }}, plotOptions: {{ bar: {{ borderRadius: 3, columnWidth: "55%" }} }},
   series: [{{ name: "Média de views", data: media }}], xaxis: {{ categories: horas.map(h => String(h).padStart(2, "0") + "h") }},
   tooltip: {{ y: {{ formatter: (v, o) => `${{v}} (${{qtd[o.dataPointIndex]}} vídeo(s))` }} }} }}).render();
+else vazio("g-hora", "Sem vídeos publicados ainda.");
 
-const pontos = pub.filter(v => v.gancho != null && v.views != null).map(v => ({{ x: +v.gancho.toFixed(2), y: v.views, t: v.titulo }}));
+const pontos = pub.filter(v => v.gancho != null && v.views != null).map(v => ({{ x: Math.round(v.gancho * 100), y: v.views, t: v.titulo }}));
+// gancho em escala 0–100: com faixa fracionária o ApexCharts repete o mesmo rótulo no eixo
+const gMin = Math.max(0, Math.floor(Math.min(...pontos.map(p => p.x)) / 5) * 5 - 5);
+const gMax = Math.min(100, Math.ceil(Math.max(...pontos.map(p => p.x)) / 5) * 5 + 5);
 if (pontos.length) new ApexCharts(document.getElementById("g-brier"), {{ ...base,
   chart: {{ ...base.chart, type: "scatter", height: 260, zoom: {{ enabled: false }} }}, markers: {{ size: 7 }},
   series: [{{ name: "Vídeo", data: pontos }}],
-  xaxis: {{ type: "numeric", min: 0.4, max: 0.8, tickAmount: 4, title: {{ text: "gancho (Brier)" }},
-    labels: {{ formatter: v => (+v).toFixed(2) }} }}, yaxis: {{ title: {{ text: "views" }} }},
+  xaxis: {{ type: "numeric", min: gMin, max: gMax, tickAmount: Math.max(1, (gMax - gMin) / 5),
+    title: {{ text: "gancho do Brier (0–100)" }}, labels: {{ formatter: v => String(Math.round(v)) }} }},
+  yaxis: {{ title: {{ text: "views" }}, labels: {{ formatter: v => String(Math.round(v)) }} }},
   tooltip: {{ custom: ({{ dataPointIndex: i }}) => `<div class="p-2 small">${{esc(pontos[i].t)}}<br>gancho ${{pontos[i].x}} · ${{pontos[i].y}} views</div>` }} }}).render();
 else vazio("g-brier", "Aparece quando os vídeos avaliados pelo Brier forem publicados.");
 
