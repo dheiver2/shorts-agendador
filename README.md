@@ -14,7 +14,7 @@ Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube pub
 2. `.venv/bin/python agente.py auth` abre o navegador para o login no canal.
 3. `.venv/bin/python agente.py run --simular` mostra o que seria agendado.
 4. `./instalar-agendamento.sh` faz rodar sozinho a cada 2 horas.
-5. (Opcional) Avisos no Telegram: copie `.env.exemplo` para `.env`, preencha `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` e teste com `.venv/bin/python agente.py teste-aviso`.
+5. (Opcional) Avisos no Telegram: copie `.env.exemplo` para `.env` e preencha `TELEGRAM_CHAT_ID` e `TELEGRAM_KEYCHAIN_SERVICE` (token no Keychain do macOS) ou `TELEGRAM_BOT_TOKEN` e teste com `.venv/bin/python agente.py teste-aviso`.
 
 ## O que cada rodada faz
 - Agenda os horários vagos de hoje e de amanhã.

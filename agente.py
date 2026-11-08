@@ -77,6 +77,14 @@ def carregar_env():
                 k, v = linha.split("=", 1)
                 env[k.strip()] = v.strip().strip('"').strip("'")
     env.update({k: v for k, v in os.environ.items() if k.startswith("TELEGRAM_")})
+    servico = env.get("TELEGRAM_KEYCHAIN_SERVICE")
+    if not env.get("TELEGRAM_BOT_TOKEN") and servico:
+        # token guardado no Keychain do macOS (não fica em arquivo)
+        r = subprocess.run(["security", "find-generic-password", "-w", "-s", servico,
+                            "-a", env.get("TELEGRAM_KEYCHAIN_ACCOUNT", "TELEGRAM_BOT_TOKEN")],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            env["TELEGRAM_BOT_TOKEN"] = r.stdout.strip()
     return env
 
 
