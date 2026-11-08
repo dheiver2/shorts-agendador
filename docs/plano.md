@@ -1,3 +1,8 @@
+---
+title: Plano de capacidades
+nav_order: 5
+---
+
 # Plano de ação: aumento de capacidades do agendador de Shorts
 
 Situação em 07/11/2026:

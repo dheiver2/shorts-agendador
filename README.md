@@ -1,5 +1,7 @@
 # Agendador de Shorts
 
+**Documentação:** https://dheiver2.github.io/shorts-agendador · **Plano:** [docs/plano.md](docs/plano.md)
+
 Pega os vídeos da pasta `~/Movies/Shorts-para-postar` e agenda **30 por semana** no YouTube: 4 por dia de segunda a sexta (12:00, 17:00, 19:00, 21:00) e 5 no sábado e no domingo (mais 09:00), horário de Brasília.
 Cada vídeo sobe como privado, com data de publicação marcada, e o YouTube publica no horário. O Mac não precisa estar ligado na hora do post.
 

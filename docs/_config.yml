@@ -1,0 +1,32 @@
+title: Agendador de Shorts
+description: Agente que agenda 30 Shorts por semana no YouTube a partir de uma pasta, com o Brier decidindo horário, revisão e hashtags.
+lang: pt-BR
+remote_theme: just-the-docs/just-the-docs@v0.10.1
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+
+url: https://dheiver2.github.io
+baseurl: /shorts-agendador
+logo: /assets/logo.svg
+color_scheme: mangaba
+
+search_enabled: true
+search:
+  heading_level: 3
+  button: false
+
+mermaid:
+  version: "10.9.1"
+
+aux_links:
+  "Código no GitHub": https://github.com/dheiver2/shorts-agendador
+aux_links_new_tab: true
+
+back_to_top: true
+back_to_top_text: "Voltar ao topo"
+
+footer_content: "Mangaba AI · código em <a href=\"https://github.com/dheiver2/shorts-agendador\">dheiver2/shorts-agendador</a>"
+
+gh_edit_link: false
+heading_anchors: true
