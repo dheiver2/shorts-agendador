@@ -91,3 +91,16 @@ def publicar_reel(token, ig_user, video, texto, teste=True, espera_max_s=600, ch
 
     return chamar(f"{GRAPH}/{ig_user}/media_publish",
                   dados={"creation_id": container, "access_token": token})["id"]
+
+
+def checar_login(token, ig_user, chamar=_req):
+    """Confere se o token ainda abre a conta. Devolve (@ da conta, quando o acesso aos dados vence
+    em epoch ou None). O token da Página não expira, mas a Meta corta o acesso aos dados 90 dias
+    depois do último login no app; renovar o login antes disso evita a queda."""
+    q = urllib.parse.urlencode({"fields": "username", "access_token": token})
+    nome = chamar(f"{GRAPH}/{ig_user}?{q}")["username"]
+    q = urllib.parse.urlencode({"input_token": token, "access_token": token})
+    dados = chamar(f"{GRAPH}/debug_token?{q}").get("data", {})
+    if dados and not dados.get("is_valid", True):
+        raise RuntimeError("token inválido")
+    return nome, dados.get("data_access_expires_at") or None

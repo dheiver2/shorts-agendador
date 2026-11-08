@@ -173,3 +173,21 @@ def test_tiktok_login_vencido_pede_auth():
         assert "tiktok-auth" in str(e)
     else:
         raise AssertionError("devia falhar")
+
+
+def test_instagram_checar_login():
+    def chamar(url):
+        return {"data": {"is_valid": True, "data_access_expires_at": 99}} if "debug_token" in url else {"username": "x"}
+    assert instagram.checar_login("T", "1", chamar=chamar) == ("x", 99)
+
+
+def test_logins_avisa_instagram_perto_de_vencer(monkeypatch):
+    import time as _t
+    cfg = {"fuso": "America/Sao_Paulo", "instagram": {"ativo": True}, "tiktok": {"ativo": False}}
+    monkeypatch.setattr(agente, "conectar", lambda: (None, "O login do YouTube expirou."))
+    monkeypatch.setattr(agente, "carregar_env", lambda: {"INSTAGRAM_TOKEN": "T", "INSTAGRAM_USER_ID": "1"})
+    monkeypatch.setattr(agente, "tiktok_credenciais", lambda: (None, None))
+    monkeypatch.setattr(agente.instagram, "checar_login", lambda t, u: ("x", _t.time() + 5 * 86400))
+    ok, prob = agente.checar_logins(cfg)
+    assert ok == [] and len(prob) == 2
+    assert prob[0].startswith("YouTube") and "vence em" in prob[1]

@@ -15,6 +15,7 @@ Uso:
   agente.py painel          # atualiza as métricas e abre o painel de desempenho
   agente.py espelhos        # repete no Instagram (Reel de teste) e no TikTok o que já saiu no YouTube (de hora em hora)
   agente.py tiktok-auth     # login no TikTok (uma vez)
+  agente.py logins          # confere os logins de YouTube, Instagram e TikTok (também roda 1x por dia)
 """
 import fcntl
 import hashlib
@@ -796,12 +797,74 @@ def cmd_tiktok_auth(cfg):
     print("Login do TikTok OK.")
 
 
+def checar_logins(cfg):
+    """Testa os três logins sem publicar nada. Devolve (ok, problemas) em texto.
+    YouTube renova o acesso pelo refresh token, o token da Página do Instagram não expira
+    e o do TikTok é renovado aqui mesmo (o refresh vale 1 ano e é trocado a cada renovação)."""
+    ok, problemas = [], []
+    yt, erro = conectar()
+    if erro:
+        problemas.append("YouTube: " + erro)
+    else:
+        try:
+            canal = yt.channels().list(part="snippet", mine=True).execute()["items"][0]["snippet"]["title"]
+            ok.append(f"YouTube: {canal}")
+        except Exception as e:
+            problemas.append(f"YouTube: {str(e)[:200]}")
+    env = carregar_env()
+    if cfg["instagram"]["ativo"] and env.get("INSTAGRAM_TOKEN") and env.get("INSTAGRAM_USER_ID"):
+        try:
+            nome, vence = instagram.checar_login(env["INSTAGRAM_TOKEN"], env["INSTAGRAM_USER_ID"])
+            dias = (vence - time.time()) / 86400 if vence else None
+            if dias is not None and dias < 14:
+                quando = datetime.fromtimestamp(vence, ZoneInfo(cfg["fuso"])).strftime("%d/%m")
+                problemas.append(f"Instagram: o acesso da Meta vence em {quando}. Renove: no Explorador da Graph API "
+                                 "gere um token novo (app Mangaba Agent), estenda e troque o token da Página.")
+            else:
+                ok.append(f"Instagram: @{nome}" + (f" (renovar até {datetime.fromtimestamp(vence):%d/%m/%Y})" if vence else ""))
+        except Exception as e:
+            problemas.append("Instagram: o login caiu (senha trocada ou acesso do app removido). "
+                             f"Gere um token novo no Explorador da Graph API. Detalhe: {str(e)[:150]}")
+    chave, segredo = tiktok_credenciais()
+    tok = carregar(TIKTOK_TOKEN, None)
+    if cfg["tiktok"]["ativo"] and chave and segredo and tok:
+        try:
+            # renova já, mesmo longe de vencer: mantém o refresh de 1 ano sempre novo
+            tok, _ = tiktok.token_valido({**tok, "expira_em": 0}, chave, segredo)
+            TIKTOK_TOKEN.write_text(json.dumps(tok))
+            TIKTOK_TOKEN.chmod(0o600)
+            ok.append("TikTok: login renovado")
+        except Exception as e:
+            problemas.append(f"TikTok: {str(e)[:200]}")
+    return ok, problemas
+
+
+def cmd_logins(cfg, so_uma_vez_por_dia=False):
+    """Checagem diária dos logins (roda junto com a primeira rodada de espelhos do dia)."""
+    hoje = datetime.now(ZoneInfo(cfg["fuso"])).date().isoformat()
+    estado = carregar(ESTADO, {"agendados": []})
+    if so_uma_vez_por_dia and estado.get("logins_checados_em") == hoje:
+        return
+    ok, problemas = checar_logins(cfg)
+    estado = carregar(ESTADO, estado)
+    estado["logins_checados_em"] = hoje
+    salvar_estado(estado)
+    for x in ok:
+        log("LOGIN ok — " + x)
+    for x in problemas:
+        log("LOGIN PROBLEMA — " + x)
+    if not so_uma_vez_por_dia:
+        print("\n".join(["✅ " + x for x in ok] + ["⚠️ " + x for x in problemas]))
+    if problemas:
+        avisar("🔑 Login das redes:\n" + "\n".join(f"• {x}" for x in problemas))
+
+
 def cmd_espelhos(cfg):
-    for fn in (cmd_instagram, cmd_tiktok):
+    for fn in (lambda c: cmd_logins(c, so_uma_vez_por_dia=True), cmd_instagram, cmd_tiktok):
         try:
             fn(cfg)
         except Exception as e:  # uma rede com problema não segura a outra
-            log(f"Erro em {fn.__name__}: {e}")
+            log(f"Erro em {getattr(fn, '__name__', 'checagem')}: {e}")
 
 
 def cmd_avaliar(cfg, limite=None):
@@ -921,6 +984,10 @@ def main():
         with LOCK.open("w") as lk:
             fcntl.flock(lk, fcntl.LOCK_EX)  # não disputa o estado.json com a rodada do YouTube
             fn(cfg)
+    elif args[0] == "logins":
+        with LOCK.open("w") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            cmd_logins(cfg)
     elif args[0] == "tiktok-auth":
         cmd_tiktok_auth(cfg)
     elif args[0] == "teste-aviso":

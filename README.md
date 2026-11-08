@@ -31,6 +31,12 @@ Cada rodada automática regrava o painel. A página aberta no navegador recarreg
 ## Mesma grade nas 3 redes
 YouTube Shorts, Instagram Reels e TikTok seguem a mesma grade: 14 por dia, um por hora das 07:00 às 20:00, o mesmo vídeo na mesma hora. O YouTube agenda sozinho (`publishAt`). Instagram e TikTok não aceitam agendamento pela API, então o launchd `br.mangaba.shorts-instagram` roda `agente.py espelhos` às 07:01, 08:01 … 20:01 e publica nas duas o que acabou de sair no YouTube. Se o Mac estiver desligado, o atraso aceito é de 2 h; depois disso, o post é dado como perdido e você é avisado.
 
+## Logins sempre ativos
+- **YouTube:** o app OAuth do Google está **em produção** (projeto winged-sol-503614-g3), então o refresh token não vence em 7 dias. Ele só cai se o acesso for revogado na conta Google.
+- **Instagram:** usa o token da Página, que não expira. A Meta corta o acesso aos dados 90 dias depois do último login no app (próximo corte: 06/02/2027). O agente avisa 14 dias antes.
+- **TikTok:** o refresh token vale 1 ano e é renovado todo dia, então o login não chega a vencer.
+- `agente.py logins` confere os três sem publicar nada. A checagem também roda sozinha uma vez por dia, na primeira rodada das 07:01, e avisa no Telegram se algum login cair.
+
 ## Instagram (Reels de teste)
 O mesmo vídeo sai também no Instagram como **Reel de teste**, na mesma hora em que vai ao ar no YouTube (14 por dia, 07:00–20:00). O Reel de teste é mostrado primeiro para quem não segue a conta e **não entra na grade do perfil**. Ele só vai para a grade se você promover pelo app (`graduation_strategy` MANUAL).
 
