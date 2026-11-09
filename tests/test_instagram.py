@@ -136,3 +136,24 @@ def test_publicar_reel_repete_upload_recusado_logo_apos_criar(tmp_path):
 def test_na_grade():
     assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": True}) is True
     assert instagram.na_grade("T", "M", chamar=lambda u: {"is_shared_to_feed": False}) is False
+
+
+def test_publicar_reel_refaz_com_container_novo(tmp_path):
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"a")
+    criados = []
+
+    def chamar(url, dados=None, **kw):
+        if url.endswith("/media"):
+            criados.append(f"C{len(criados)}")
+            return {"id": criados[-1]}
+        if "rupload" in url or url.endswith(tuple(criados)):
+            if len(criados) == 1:
+                raise RuntimeError("Instagram HTTP 400: ProcessingFailedError not in the status to upload")
+            return {"success": True}
+        if "fields=" in url:
+            return {"status_code": "FINISHED"}
+        return {"id": "P"}
+
+    assert instagram.publicar_reel("TK", "IG", video, "l", chamar=chamar, dormir=lambda s: None) == "P"
+    assert criados == ["C0", "C1"]

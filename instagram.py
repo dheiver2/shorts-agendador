@@ -65,8 +65,24 @@ def _req(url, dados=None, cabecalhos=None, metodo=None, corpo=None, timeout=60):
         raise RuntimeError(f"Instagram HTTP {e.code}: {detalhe}") from None
 
 
-def publicar_reel(token, ig_user, video, texto, teste=True, espera_max_s=600, chamar=_req, dormir=time.sleep):
-    """Sobe o arquivo e publica. Devolve o id do post no Instagram."""
+def publicar_reel(token, ig_user, video, texto, teste=True, espera_max_s=600, chamar=_req, dormir=time.sleep,
+                  tentativas=3):
+    """Sobe o arquivo e publica. Devolve o id do post no Instagram. Falhas de processamento do lado da
+    Meta (container travado, erro de transcodificação) costumam passar com um container novo, então
+    a publicação inteira é refeita algumas vezes antes de desistir."""
+    for n in range(tentativas):
+        try:
+            return _publicar_uma(token, ig_user, video, texto, teste, espera_max_s, chamar, dormir)
+        except RuntimeError as e:
+            msg = str(e)
+            transitorio = ("ProcessingFailedError" in msg or "não processou" in msg
+                           or "Transcoding" in msg or "HTTP 5" in msg)
+            if not transitorio or n == tentativas - 1:
+                raise
+            dormir(30)
+
+
+def _publicar_uma(token, ig_user, video, texto, teste, espera_max_s, chamar, dormir):
     params = {"media_type": "REELS", "upload_type": "resumable", "caption": texto, "access_token": token}
     if teste:
         params["trial_params"] = json.dumps({"graduation_strategy": "MANUAL"})
